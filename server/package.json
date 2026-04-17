@@ -1,0 +1,38 @@
+{
+  "name": "server",
+  "version": "1.0.0",
+  "description": "Trabajo Final de Grado de Ingeniería Multimedia en la Universidad de Alicante de Laura Saval Cillero tutorizado por Francisco Maciá Pérez durante el curso 2025/26.",
+  "keywords": [
+    "voting-system"
+  ],
+  "homepage": "https://github.com/laurasaval/TFG-multimedia#readme",
+  "bugs": {
+    "url": "https://github.com/laurasaval/TFG-multimedia/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/laurasaval/TFG-multimedia.git"
+  },
+  "license": "Apache-2.0",
+  "author": "Laura Saval Cillero",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "dev:es": "nodemon scripts/start-country.js es",
+    "dev:fr": "nodemon scripts/start-country.js fr",
+    "dev:de": "nodemon scripts/start-country.js de"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "mongoose": "^9.4.1",
+    "ws": "^8.20.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}
