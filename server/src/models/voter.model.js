@@ -19,6 +19,6 @@ const voterSchema = new mongoose.Schema({
         type: [tokenSchema],
         required: true
     }
-});
+}, { timestamps: { createdAt: "registeredAt", updatedAt: "updatedAt" } });
 
 export const VoterModel = mongoose.model("Voter", voterSchema);

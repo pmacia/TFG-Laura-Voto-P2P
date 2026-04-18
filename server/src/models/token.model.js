@@ -18,15 +18,11 @@ const tokenSchema = new mongoose.Schema({
         type: String,
         required: true
     },
-    issuedAt: {
-        type: Date,
-        default: Date.now
-    },
     used: {
         type: Boolean,
         default: false
     }
-});
+}, { timestamps: { createdAt: "issuedAt", updatedAt: "updatedAt" } });
 
 export const TokenModel = mongoose.model("Token", tokenSchema);
 export { tokenSchema };
