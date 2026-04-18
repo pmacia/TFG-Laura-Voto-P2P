@@ -26,7 +26,10 @@
     "dev:de": "nodemon scripts/start-country.js de",
     "seed:es": "node scripts/seed-voter.js es",
     "seed:fr": "node scripts/seed-voter.js fr",
-    "seed:de": "node scripts/seed-voter.js de"
+    "seed:de": "node scripts/seed-voter.js de",
+    "keys:es": "node scripts/generate-country-keys.js es",
+    "keys:fr": "node scripts/generate-country-keys.js fr",
+    "keys:de": "node scripts/generate-country-keys.js de"
   },
   "dependencies": {
     "argon2": "^0.44.0",
