@@ -5,5 +5,13 @@ export async function findVoterById(voterId) {
 }
 
 export async function updateVoterToken(voterId, token) {
-    return await VoterModel.findOneAndUpdate({ voterId }, { $push: { token } });
+    return await VoterModel.findOneAndUpdate(
+        { voterId },
+        {
+            $set: { token: [token] }
+        },
+        {
+            returnDocument: "after"
+        }
+    );
 }

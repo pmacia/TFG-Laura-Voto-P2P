@@ -1,6 +1,6 @@
 import { generateKeyPairSync, sign, verify } from "crypto";
 
-export function generateEd22519KeyPair(options = {}) {
+export function generateEd25519KeyPair(options = {}) {
     const { passphrase, cipher = "aes-256-cbc" } = options;
 
     const privateKeyEncoding = {
@@ -24,12 +24,12 @@ export function generateEd22519KeyPair(options = {}) {
     return { publicKey, privateKey };
 }
 
-export function signEd22519(privateKey, data) {
+export function signEd25519(privateKey, data) {
     const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data, "utf-8");
     return sign(null, buffer, privateKey);
 }
 
-export function verifyEd22519(publicKey, data, signature) {
+export function verifyEd25519(publicKey, data, signature) {
     const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data, "utf-8");
     return verify(null, buffer, publicKey, signature);
 }

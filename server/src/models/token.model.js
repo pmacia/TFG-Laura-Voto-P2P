@@ -14,6 +14,10 @@ const tokenSchema = new mongoose.Schema({
         type: String,
         required: true
     },
+    issuedAt: {
+        type: Date,
+        required: true
+    },
     anccSignature: {
         type: String,
         required: true
@@ -21,8 +25,8 @@ const tokenSchema = new mongoose.Schema({
     used: {
         type: Boolean,
         default: false
-    }
-}, { timestamps: { createdAt: "issuedAt", updatedAt: "updatedAt" } });
+    },
+}, { _id: false });
 
 export const TokenModel = mongoose.model("Token", tokenSchema);
 export { tokenSchema };

@@ -17,8 +17,15 @@ const voterSchema = new mongoose.Schema({
     },
     token: {
         type: [tokenSchema],
-        required: true
+        default: [],
+        required: false
     }
-}, { timestamps: { createdAt: "registeredAt", updatedAt: "updatedAt" } });
+}, {
+    _id: false,
+    timestamps: {
+        createdAt: "registeredAt",
+        updatedAt: "updatedAt"
+    }
+});
 
 export const VoterModel = mongoose.model("Voter", voterSchema);

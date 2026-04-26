@@ -1,6 +1,6 @@
 export interface VoteTokenRequestPayload {
     voterId: string;
-    publicKeyVote: string;
+    voterPublicKey: string;
     requestedAt: string;
 }
 
@@ -11,7 +11,7 @@ export interface VoteTokenRequestBody extends VoteTokenRequestPayload {
 export interface VoteToken {
     tokenId: string;
     token: string;
-    publicKeyVote: string;
+    voterPublicKey: string;
     issuedAt: string;
     used: boolean;
     countrySignature: string;

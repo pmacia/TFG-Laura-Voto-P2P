@@ -24,6 +24,6 @@ export async function deactivateSession(sessionToken) {
             isActive: true
         },
         { isActive: false },
-        { new: true }
+        { returnDocument: "after" }
     );
 }

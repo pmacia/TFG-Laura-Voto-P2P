@@ -5,6 +5,7 @@ import { Observable, tap } from "rxjs";
 import { LoginRequest, LoginResponse } from "../../shared/models/auth.models";
 import { API_CONFIG } from "../config/api.config";
 import { SessionService } from "./session.service";
+import { TokenService } from "./token.service";
 
 @Injectable({
     providedIn: "root"
@@ -14,7 +15,8 @@ export class AuthService {
 
     constructor(
         private http: HttpClient,
-        private sessionService: SessionService
+        private sessionService: SessionService,
+        private tokenService: TokenService
     ) { }
 
     login(payload: LoginRequest): Observable<LoginResponse> {
@@ -41,6 +43,7 @@ export class AuthService {
 
     logout(): void {
         this.sessionService.clearSession();
+        this.tokenService.clearToken();
         localStorage.removeItem("tfg_voter");
     }
 }

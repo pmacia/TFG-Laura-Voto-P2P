@@ -8,7 +8,7 @@ import { VoteKeyService } from "./vote-key.service";
 import { IdentityKeyService } from "./identity-key.service";
 import { WebCryptoEd25519Service } from "./web-crypto-ed25519.service";
 
-import { canonicalJson } from "../utils/canonical-json.util";
+import { canonicalJson } from "../../../../../shared/utils/canonical-json.util";
 import { VoteToken, VoteTokenRequestBody, VoteTokenRequestPayload, VoteTokenResponse } from "../../shared/models/token.models";
 import { Voter } from "../../shared/models/auth.models";
 
@@ -54,7 +54,7 @@ export class TokenService {
 
         const payload: VoteTokenRequestPayload = {
             voterId: voter.voterId,
-            publicKeyVote: voteKeyPair.publicKey,
+            voterPublicKey: voteKeyPair.publicKey,
             requestedAt: new Date().toISOString()
         };
 
