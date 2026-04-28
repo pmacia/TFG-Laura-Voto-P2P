@@ -3,7 +3,7 @@ import { spawnSync } from "child_process";
 const countries = ["es", "fr", "de"];
 
 for (const country of countries) {
-    const result = spawnSync(
+    spawnSync(
         process.execPath,
         ["scripts/seed-voting-config.js", country],
         {

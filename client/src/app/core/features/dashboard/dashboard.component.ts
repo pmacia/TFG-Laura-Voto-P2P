@@ -117,8 +117,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
         (code) => code !== countryCode
       )
     }
-
-    console.log(this.selectedCountries);
   }
 
   prepareVotePlain(): void {
