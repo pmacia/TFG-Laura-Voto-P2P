@@ -219,17 +219,15 @@
                 La ANCC solo coordina la señalización inicial. La comunicación entre votantes se establece mediante
                 WebRTC.
             </p>
-            <h1>CONTADOR</h1>
-            <p class="p2p-subtitle">Esperando {{ waitingState?.waitingCount }} de {{ waitingState?.requiredCount }}</p>
         </div>
 
         <ol class="p2p-steps" aria-label="Estado de conexión P2P">
-            <li class="p2p-step" [class.p2p-step--done]="encryptedVote"
+            <li class="p2p-step" [class.p2p-step--done]="votePlainHash"
                 [class.p2p-step--active]="voteStep === 'review'">
                 <span class="p2p-step__number">1</span>
                 <span class="p2p-step__content">
-                    <strong>Voto cifrado</strong>
-                    <small>El voto se cifra localmente con AES-GCM.</small>
+                    <strong>Voto listo</strong>
+                    <small>El voto se ha generado correctamente.</small>
                 </span>
             </li>
 

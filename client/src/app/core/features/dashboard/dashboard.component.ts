@@ -18,6 +18,22 @@ import { SessionService } from '../../services/session.service';
 import { Subscription } from 'rxjs';
 import { API_CONFIG } from '../../config/api.config';
 import { VotingState, VoteStep, SelectedPerformanceVideo } from '../../../shared/models/dashboard.model';
+import { EncryptedEnvelope } from '../../../shared/models/encrypted.model';
+
+import { P2PCryptoService } from '../../services/p2p-crypto.service';
+import { HybridCryptoService } from '../../services/hybrid-crypto.service';
+import { VoterKeyService } from '../../services/voter-key.service';
+import {
+  P2PMessage,
+  SignedP2PPayload,
+  TokenRoundProof,
+  TokenRoundProofPayload,
+  PresidentInnerPayload,
+  NotaryInnerPayload,
+  SecretaryInnerPayload,
+  VoteToSecretaryMessage,
+  VoteToSecretaryPayload
+} from '../../../shared/models/p2p-message.models';
 
 @Component({
   selector: 'app-dashboard',
@@ -33,8 +49,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   selectedCountries: string[] = [];
   votePlain: VotePlain | null = null;
-  encryptedVote: VoteEncrypted | null = null;
-  symmetricKey: string | null = null;
+  votePlainHash: string = "";
 
   countdownText = "";
   private intervalId: number | null = null;
@@ -56,6 +71,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   private subscriptions: Subscription[] = [];
 
+  voteSentToSecretary = false;
+
   graphNodes: Array<{
     peerId: string;
     x: number;
@@ -72,6 +89,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
     y2: number;
   }> = [];
 
+  receivedVotesAsSecretary: Array<{
+    fromPeerId: string;
+    encryptedForNotary: EncryptedEnvelope;
+  }> = [];
+
   constructor(
     private authService: AuthService,
     private router: Router,
@@ -79,7 +101,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
     private voteService: VoteService,
     private sanitizer: DomSanitizer,
     private sessionService: SessionService,
-    private p2pNetworkService: P2PNetworkService
+    private p2pNetworkService: P2PNetworkService,
+    private p2pCryptoService: P2PCryptoService,
+    private hybridCryptoService: HybridCryptoService,
+    private voterKeyService: VoterKeyService
   ) { }
 
   async ngOnInit() {
@@ -177,7 +202,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       }
 
       this.votePlain = this.voteService.prepareVotePlain(this.selectedCountries);
-      //[this.encryptedVote, this.symmetricKey] = await this.voteService.encryptVote(this.votePlain);
+      this.votePlainHash = await this.p2pCryptoService.hashCanonical(this.votePlain);
 
       this.voteStep = 'p2p';
       this.successMessage = "Voto preparado correctamente. Conectando a la red P2P...";
@@ -190,96 +215,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
   }
 
+  // TODO: Eliminar
   sendTestP2PMessage(): void {
     this.p2pNetworkService.broadcastTestMessage();
-  }
-
-  private joinP2PAfterVotePrepared(): void {
-    const sessionToken = this.sessionService.getSessionToken();
-
-    console.log(sessionToken);
-
-    if (!sessionToken) {
-      throw new Error("No hay sesión activa");
-    }
-
-    const voterRaw = localStorage.getItem("tfg_voter");
-
-    if (!voterRaw) {
-      throw new Error("No hay votante autenticado");
-    }
-
-    const voter = JSON.parse(voterRaw);
-
-    if (!voter.voterId) {
-      throw new Error("No se pudo obtener el voterId");
-    }
-
-    this.joiningP2P = true;
-
-    const wsUrl = this.getSignalingUrl();
-
-    this.p2pNetworkService.connectAndJoin({
-      wsUrl,
-      sessionToken,
-      voterId: voter.voterId
-    });
-  }
-
-  private subscribeToP2PState(): void {
-    this.p2pNetworkService.waitingState$.subscribe((state) => {
-      this.waitingState = state;
-    });
-
-    this.p2pNetworkService.disconnectedPeers$.subscribe((peers) => {
-      this.disconnectedPeers = peers;
-    });
-
-    this.p2pNetworkService.roundState$.subscribe((state) => {
-      this.roundState = state;
-
-      if (state) {
-        this.joiningP2P = false;
-        this.voteStep = 'p2p';
-        this.successMessage = 'Ronda P2P creada correctamente';
-        this.buildP2PGraph();
-      }
-    });
-
-    this.p2pNetworkService.connectionEvents$.subscribe((events) => {
-      this.connectionEvents = events;
-
-      const disconnectedStates = new Set([
-        'disconnected',
-        'failed',
-        'closed',
-        'peer-disconnected',
-        'datachannel-closed'
-      ]);
-
-      const disconnected = events
-        .filter((event) => disconnectedStates.has(event.state))
-        .map((event) => event.peerId)
-        .filter((peerId) => !!peerId);
-
-      this.disconnectedPeers = Array.from(new Set(disconnected));
-
-      if (this.roundState) {
-        this.buildP2PGraph();
-      }
-    });
-
-    this.p2pNetworkService.p2pMessages$.subscribe((messages) => {
-      this.p2pMessages = messages;
-    });
-
-    this.p2pNetworkService.error$.subscribe((error) => {
-      this.p2pError = error;
-
-      if (error) {
-        this.joiningP2P = false;
-      }
-    });
   }
 
   prepareVote(): void {
@@ -290,6 +228,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   backToSelection(): void {
     this.voteStep = 'selection';
+  }
+
+  get isSecretary(): boolean {
+    return !!this.roundState && this.roundState.ownPeerId === this.roundState.roles.secretary.peerId;
   }
 
   get selectedCandidates() {
@@ -335,6 +277,143 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.selectedPerformance = null;
   }
 
+  // Preparar voto con triple cifrado para enviarlo al secretario
+  async sendVoteToSecretary(): Promise<void> {
+    try {
+      if (!this.roundState) { throw new Error("No hay ronda P2P activa"); }
+      if (!this.votePlain) { throw new Error("No hay ningún voto preparado"); }
+      if (!this.votePlainHash) { throw new Error("No hay ningún hash de voto preparado"); }
+      if (this.voteSentToSecretary) { return };
+
+      const secretary = this.roundState.roles.secretary;
+      const notary = this.roundState.roles.notary;
+      const president = this.roundState.roles.president;
+
+      const voteToken = this.getStoredVoteToken();
+      const tokenRoundProofPayload: TokenRoundProofPayload = {
+        roundId: this.roundState.roundId,
+        roundNumber: this.roundState.roundNumber,
+        token: voteToken
+      };
+      const signedTokenRoundProof = await this.p2pCryptoService.signWithTokenSigningKey(tokenRoundProofPayload);
+      const tokenRoundProof: TokenRoundProof = {
+        payload: tokenRoundProofPayload,
+        signatureBase64: signedTokenRoundProof.signatureBase64
+      };
+
+      const presidentInnerPayload: PresidentInnerPayload = {
+        roundId: this.roundState.roundId,
+        roundNumber: this.roundState.roundNumber,
+        votePlain: this.votePlain,
+        tokenRoundProof
+      };
+      const encryptedForPresident = await this.hybridCryptoService.encryptJsonForPublicKey(
+        presidentInnerPayload,
+        president.encryptionPublicKey
+      );
+
+      const notaryInnerPayload: NotaryInnerPayload = {
+        roundId: this.roundState.roundId,
+        roundNumber: this.roundState.roundNumber,
+        votePlainHash: this.votePlainHash,
+        encryptedForPresident
+      }
+      const encryptedForNotary = await this.hybridCryptoService.encryptJsonForPublicKey(
+        notaryInnerPayload,
+        notary.encryptionPublicKey
+      );
+
+      const secretaryInnerPayload: SecretaryInnerPayload = {
+        roundId: this.roundState.roundId,
+        roundNumber: this.roundState.roundNumber,
+        encryptedForNotary
+      };
+      const encryptedForSecretary = await this.hybridCryptoService.encryptJsonForPublicKey(
+        secretaryInnerPayload,
+        secretary.encryptionPublicKey
+      );
+
+      const voteToSecretaryPayload: VoteToSecretaryPayload = {
+        roundId: this.roundState.roundId,
+        roundNumber: this.roundState.roundNumber,
+        fromPeerId: this.roundState.ownPeerId,
+        toSecretaryPeerId: secretary.peerId,
+        encryptedForSecretary
+      }
+      const signedVoteToSecretaryPayload = await this.p2pCryptoService.signWithVoterSigningKey(
+        this.roundState.ownPeerId,
+        voteToSecretaryPayload
+      );
+
+      const message: P2PMessage<SignedP2PPayload<VoteToSecretaryPayload>> = {
+        type: "VOTE_TO_SECRETARY",
+        payload: signedVoteToSecretaryPayload
+      }
+
+
+      if (this.isSecretary) {
+        await this.handleVoteToSecretary(signedVoteToSecretaryPayload);
+      } else {
+        this.p2pNetworkService.sendToPeer(secretary.peerId, message);
+        this.successMessage = "Voto enviado al secretario";
+      }
+
+      this.voteSentToSecretary = true;
+
+    } catch (error: any) {
+      this.errorMessage = error?.message ?? "No se puedo enviar el voto al secretario";
+    }
+  }
+
+  // Función para cuando el secretario recibe un voto, incluyendo el propio
+  private async handleVoteToSecretary(signedPayload: SignedP2PPayload<VoteToSecretaryPayload>): Promise<void> {
+    if (!this.roundState || !this.isSecretary) { return; }
+
+    const payload = signedPayload.payload;
+
+    this.assertCurrentRound(payload.roundId, payload.roundNumber);
+
+    if (payload.toSecretaryPeerId !== this.roundState.roles.secretary.peerId) {
+      throw new Error("El mensaje no va dirigido al secretario de esta ronda");
+    }
+
+    if (signedPayload.signerPeerId !== payload.fromPeerId) {
+      throw new Error("El firmante no coincide con el remitente del voto");
+    }
+
+    const senderPeer = this.getPeerById(payload.fromPeerId);
+    const isSignatureValid = await this.p2pCryptoService.verifySignedP2PPayload(
+      signedPayload,
+      senderPeer.voterSigningPublicKey
+    );
+    if (!isSignatureValid) {
+      throw new Error("Firma del votante inválida en el mensaje al secretario");
+    }
+
+    const ownEncryptionKeyPair = await this.voterKeyService.ensureEncryptionVoteKeyPair();
+    const secretaryInnerPayload = await this.decryptEnvelope<SecretaryInnerPayload>(
+      payload.encryptedForSecretary,
+      ownEncryptionKeyPair.privateKey
+    );
+
+    this.assertCurrentRound(secretaryInnerPayload.roundId, secretaryInnerPayload.roundNumber);
+
+    const alreadyReceived = this.receivedVotesAsSecretary.some(
+      (item) => item.fromPeerId === payload.fromPeerId
+    );
+    if (alreadyReceived) { return; }
+
+    this.receivedVotesAsSecretary = [
+      ...this.receivedVotesAsSecretary,
+      {
+        fromPeerId: payload.fromPeerId,
+        encryptedForNotary: secretaryInnerPayload.encryptedForNotary
+      }
+    ];
+
+    this.successMessage = `Secretario: votos recibidos ${this.receivedVotesAsSecretary.length}/${this.roundState.peers.length}`;
+  }
+
   private toYoutubeEmbedUrl(url: string): string | null {
     const videoId = this.extractYoutubeVideoId(url);
 
@@ -353,8 +432,172 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return match ? match[1] : null;
   }
 
+  private joinP2PAfterVotePrepared(): void {
+    const sessionToken = this.sessionService.getSessionToken();
+
+    console.log(sessionToken);
+
+    if (!sessionToken) {
+      throw new Error("No hay sesión activa");
+    }
+
+    const voterRaw = localStorage.getItem("tfg_voter");
+
+    if (!voterRaw) {
+      throw new Error("No hay votante autenticado");
+    }
+
+    const voter = JSON.parse(voterRaw);
+
+    if (!voter.voterId) {
+      throw new Error("No se pudo obtener el voterId");
+    }
+
+    this.joiningP2P = true;
+
+    const wsUrl = this.getSignalingUrl();
+
+    this.p2pNetworkService.connectAndJoin({
+      wsUrl,
+      sessionToken,
+      voterId: voter.voterId
+    });
+  }
+
+  private subscribeToP2PState(): void {
+    this.p2pNetworkService.waitingState$.subscribe((state) => {
+      this.waitingState = state;
+    });
+
+    this.p2pNetworkService.disconnectedPeers$.subscribe((peers) => {
+      this.disconnectedPeers = peers;
+    });
+
+    this.p2pNetworkService.roundState$.subscribe(async (state) => {
+      this.roundState = state;
+
+      if (state) {
+        this.joiningP2P = false;
+        this.voteStep = 'p2p';
+        this.successMessage = 'Ronda P2P creada correctamente';
+        this.buildP2PGraph();
+
+        await this.sendVoteToSecretary();
+      }
+    });
+
+    this.p2pNetworkService.connectionEvents$.subscribe((events) => {
+      this.connectionEvents = events;
+
+      const disconnectedStates = new Set([
+        'disconnected',
+        'failed',
+        'closed',
+        'peer-disconnected',
+        'datachannel-closed'
+      ]);
+
+      const disconnected = events
+        .filter((event) => disconnectedStates.has(event.state))
+        .map((event) => event.peerId)
+        .filter((peerId) => !!peerId);
+
+      this.disconnectedPeers = Array.from(new Set(disconnected));
+
+      if (this.roundState) {
+        this.buildP2PGraph();
+      }
+    });
+
+    this.p2pNetworkService.p2pMessages$.subscribe(async (messages) => {
+      this.p2pMessages = messages;
+
+      const lastMessage = messages[messages.length - 1];
+
+      if (lastMessage?.data) {
+        await this.handleIncomingVotingP2PMessage(lastMessage.data);
+      }
+    });
+
+    this.p2pNetworkService.error$.subscribe((error) => {
+      this.p2pError = error;
+
+      if (error) {
+        this.joiningP2P = false;
+      }
+    });
+  }
+
   private getSignalingUrl(): string {
     return API_CONFIG.WS_URL;
+  }
+
+  private getStoredVoteToken(): any {
+    const raw = localStorage.getItem("tfg_vote_token");
+
+    if (!raw) {
+      throw new Error("No se ha encontrado el token de voto");
+    }
+
+    return JSON.parse(raw);
+  }
+
+  private getPeerById(peerId: string) {
+    const peer = this.roundState?.peers.find((item) => item.peerId === peerId);
+
+    if (!peer) {
+      throw new Error(`Peer no encontrado en la ronda: ${peerId}`);
+    }
+
+    return peer;
+  }
+
+  private assertCurrentRound(roundId: string, roundNumber: number): void {
+    if (!this.roundState) {
+      throw new Error("No hay ronda activa");
+    }
+
+    if (
+      this.roundState.roundId !== roundId ||
+      this.roundState.roundNumber !== roundNumber
+    ) {
+      throw new Error("Mensaje recibido para otra ronda");
+    }
+  }
+
+  private async decryptEnvelope<T>(
+    encrypted: EncryptedEnvelope,
+    privateKeyPem: string
+  ): Promise<T> {
+    const decrypted = await this.hybridCryptoService.decryptJsonWithPrivateKey(
+      encrypted,
+      privateKeyPem
+    );
+
+    if (typeof decrypted === "string") {
+      return JSON.parse(decrypted) as T;
+    }
+
+    return decrypted as T;
+  }
+
+  private async handleIncomingVotingP2PMessage(message: P2PMessage): Promise<void> {
+    try {
+      if (!message?.type) {
+        return;
+      }
+
+      switch (message.type) {
+        case "VOTE_TO_SECRETARY":
+          await this.handleVoteToSecretary(
+            message.payload as SignedP2PPayload<VoteToSecretaryPayload>
+          );
+          break;
+      }
+    } catch (error: any) {
+      this.errorMessage =
+        error?.message ?? "Error procesando mensaje P2P";
+    }
   }
 
   private buildP2PGraph(): void {

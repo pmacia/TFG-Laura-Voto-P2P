@@ -12,6 +12,7 @@ export class WebRTCService {
 
     private connections = new Map<string, RTCPeerConnection>();
     private dataChannels = new Map<string, RTCDataChannel>();
+    private pendingMessagesByPeerId = new Map<string, unknown[]>();
 
     p2pMessage$ = new Subject<{ fromPeerId: string; data: any }>();
     connectionState$ = new Subject<any>();
@@ -45,7 +46,12 @@ export class WebRTCService {
         const channel = this.dataChannels.get(peerId);
 
         if (!channel || channel.readyState !== "open") {
-            console.warn("DataChannel no abierto para", peerId);
+            console.warn(`DataChannel no abierto para ${peerId}. Mensaje encolado.`);
+
+            const pending = this.pendingMessagesByPeerId.get(peerId) ?? [];
+            pending.push(data);
+            this.pendingMessagesByPeerId.set(peerId, pending);
+
             return;
         }
 
@@ -128,10 +134,14 @@ export class WebRTCService {
         this.dataChannels.set(peerId, channel);
 
         channel.onopen = () => {
+            console.log("DataChannel abierto con:", peerId);
+
             this.connectionState$.next({
                 peerId,
                 state: "datachannel-open"
             });
+
+            this.flushPendingMessages(peerId);
         };
 
         channel.onclose = () => {
@@ -230,5 +240,25 @@ export class WebRTCService {
                 this.handleIceCandidate(message.payload);
                 break;
         }
+    }
+
+    private flushPendingMessages(peerId: string): void {
+        const channel = this.dataChannels.get(peerId);
+
+        if (!channel || channel.readyState !== "open") {
+            return;
+        }
+
+        const pending = this.pendingMessagesByPeerId.get(peerId) ?? [];
+
+        for (const message of pending) {
+            channel.send(JSON.stringify(message));
+        }
+
+        if (pending.length > 0) {
+            console.log(`Mensajes pendientes enviados a ${peerId}:`, pending.length);
+        }
+
+        this.pendingMessagesByPeerId.delete(peerId);
     }
 }
