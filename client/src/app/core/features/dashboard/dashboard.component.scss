@@ -2182,6 +2182,10 @@
     background: var(--success);
 }
 
+.legend-dot--notary {
+    background: #c4a3ff;
+}
+
 .legend-dot--president {
     background: var(--gold);
 }
@@ -2235,6 +2239,14 @@
     stroke-width: 2.5;
 }
 
+/* Rol: notario */
+
+.p2p-graph__node--notary .p2p-graph__node-core {
+    fill: rgba(180, 140, 255, 0.2);
+    stroke: #c4a3ff;
+    stroke-width: 2.5;
+}
+
 /* Rol: jefe */
 
 .p2p-graph__node--president .p2p-graph__node-core {
@@ -2271,6 +2283,14 @@
 .p2p-graph__node--self.p2p-graph__node--secretary .p2p-graph__node-core {
     fill: rgba(143, 245, 220, 0.26);
     stroke: var(--success);
+}
+
+
+/* Combinaciones: yo + notario */
+
+.p2p-graph__node--self.p2p-graph__node--notary .p2p-graph__node-core {
+    fill: rgba(180, 140, 255, 0.28);
+    stroke: #c4a3ff;
 }
 
 /* Combinaciones: yo + jefe */
@@ -2311,6 +2331,12 @@
 
 .p2p-graph__node--secretary:not(.p2p-graph__node--self) .p2p-graph__node-role {
     fill: var(--success);
+}
+
+/* Texto si es notario */
+
+.p2p-graph__node--notary:not(.p2p-graph__node--self) .p2p-graph__node-role {
+    fill: #c4a3ff;
 }
 
 /* Texto si es jefe */

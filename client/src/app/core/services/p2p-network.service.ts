@@ -71,6 +71,7 @@ export class P2PNetworkService {
             });
     }
 
+    // TODO: eliminar
     broadcastTestMessage(): void {
         this.webRTCService.broadcast({
             type: "P2P_TEST",
@@ -79,6 +80,14 @@ export class P2PNetworkService {
                 sentAt: new Date().toISOString()
             }
         });
+    }
+
+    sendToPeer(peerId: string, data: any): void {
+        this.webRTCService.sendToPeer(peerId, data);
+    }
+
+    broadcast(data: any): void {
+        this.webRTCService.broadcast(data);
     }
 
     private async handleRoundCreated(

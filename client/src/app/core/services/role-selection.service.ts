@@ -18,22 +18,20 @@ export class RoleSelectionService {
         lastBlockHash: string;
         roles: RoundRoles;
     }> {
-        if (!Array.isArray(peers) || peers.length < 2) {
-            throw new Error("Se necesitan al menos dos peers para seleccionar roles");
+        if (!Array.isArray(peers) || peers.length < 3) {
+            throw new Error("Se necesitan al menos tres peers para seleccionar roles");
         }
 
         const lastBlockHash = await this.blockchainVerificationService.getLastBlockHash(blockchain);
 
-        const orderedPeers = await this.deterministicOrderPeers(
-            peers,
-            lastBlockHash
-        );
+        const orderedPeers = await this.deterministicOrderPeers(peers, lastBlockHash);
 
         return {
             lastBlockHash,
             roles: {
                 secretary: orderedPeers[0],
-                president: orderedPeers[orderedPeers.length - 1]
+                notary: orderedPeers[1],
+                president: orderedPeers[2]
             }
         };
     }

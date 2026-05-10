@@ -60,7 +60,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     peerId: string;
     x: number;
     y: number;
-    role: 'self' | 'secretary' | 'president' | 'voter';
+    role: 'secretary' | 'notary' | 'president' | 'voter';
     roleLabel: string;
     isSelf: boolean;
   }> = [];
@@ -376,6 +376,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
     const ownPeerId = this.roundState.ownPeerId;
     const secretaryPeerId = this.roundState.roles.secretary.peerId;
+    const notaryPeerId = this.roundState.roles.notary.peerId;
     const presidentPeerId = this.roundState.roles.president.peerId
     const total = peers.length;
 
@@ -388,15 +389,21 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
       const isSelf = peer.peerId === ownPeerId;
       const isSecretary = peer.peerId === secretaryPeerId;
+      const isNotary = peer.peerId === notaryPeerId;
       const isPresident = peer.peerId === presidentPeerId;
 
-      let role: 'self' | 'secretary' | 'president' | 'voter' = 'voter';
+      let role: 'secretary' | 'notary' | 'president' | 'voter' = 'voter';
       let roleLabel = 'Votante';
 
 
       if (isSecretary) {
         role = 'secretary';
         roleLabel = 'Secretario';
+      }
+
+      if (isNotary) {
+        role = 'notary';
+        roleLabel = 'Notario';
       }
 
       if (isPresident) {

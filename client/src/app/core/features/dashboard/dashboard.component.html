@@ -297,7 +297,12 @@
                 </article>
 
                 <article>
-                    <span class="p2p-round-label">Jefe</span>
+                    <span class="p2p-round-label">Notario</span>
+                    <strong>{{ roundState.roles.notary.peerId }}</strong>
+                </article>
+
+                <article>
+                    <span class="p2p-round-label">Presidente</span>
                     <strong>{{ roundState.roles.president.peerId }}</strong>
                 </article>
             </div>
@@ -342,6 +347,7 @@
 
                 <g *ngFor="let node of graphNodes" class="p2p-graph__node" [class.p2p-graph__node--self]="node.isSelf"
                     [class.p2p-graph__node--secretary]="node.role === 'secretary'"
+                    [class.p2p-graph__node--notary]="node.role === 'notary'"
                     [class.p2p-graph__node--president]="node.role === 'president'"
                     [class.p2p-graph__node--voter]="node.role === 'voter'"
                     [attr.transform]="'translate(' + node.x + ',' + node.y + ')'">
@@ -364,6 +370,11 @@
                 <div>
                     <span class="legend-dot legend-dot--secretary"></span>
                     Secretario
+                </div>
+
+                <div>
+                    <span class="legend-dot legend-dot--notary"></span>
+                    Notario
                 </div>
 
                 <div>

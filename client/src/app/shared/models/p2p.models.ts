@@ -42,6 +42,7 @@ export interface RoundCreatedPayload {
 
 export interface RoundRoles {
     secretary: P2PPeer;
+    notary: P2PPeer;
     president: P2PPeer;
 }
 
