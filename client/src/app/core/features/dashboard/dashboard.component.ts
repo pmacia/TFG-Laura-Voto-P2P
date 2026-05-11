@@ -34,7 +34,10 @@ import {
   VoteToSecretaryMessage,
   VoteToSecretaryPayload,
   SecretaryBatchToNotaryPayload,
-  SecretaryBatchToNotaryMessage
+  SecretaryBatchToNotaryMessage,
+  NotaryBatchToPresidentPayload,
+  NotaryHashCommitmentPayload,
+  NotaryBatchToPresidentMessage
 } from '../../../shared/models/p2p-message.models';
 
 @Component({
@@ -75,6 +78,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   voteSentToSecretary = false;
   secretaryBatchSentToNotary = false;
+  notaryBatchSentToPresident = false;
+
 
   graphNodes: Array<{
     peerId: string;
@@ -98,6 +103,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }> = [];
 
   receivedSecretaryBatchAsNotary: SignedP2PPayload<SecretaryBatchToNotaryPayload> | null = null;
+  receivedNotaryItems: NotaryInnerPayload[] = [];
+
+  receivedBatchAsPresident: SignedP2PPayload<NotaryBatchToPresidentPayload> | null = null;
 
   constructor(
     private authService: AuthService,
@@ -241,6 +249,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   get isNotary(): boolean {
     return !!this.roundState && this.roundState.ownPeerId === this.roundState.roles.notary.peerId;
+  }
+
+  get isPresident(): boolean {
+    return !!this.roundState && this.roundState.ownPeerId === this.roundState.roles.president.peerId;
   }
 
   get selectedCandidates() {
@@ -412,12 +424,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
         payload: signedPayload
       };
 
-
-      if (this.isNotary) {
-        await this.handleSecretaryBatchToNotary(signedPayload);
-      } else {
-        this.p2pNetworkService.sendToPeer(notary.peerId, message);
-      }
+      this.p2pNetworkService.sendToPeer(notary.peerId, message);
 
       this.secretaryBatchSentToNotary = true;
 
@@ -427,6 +434,73 @@ export class DashboardComponent implements OnInit, OnDestroy {
     } catch (error: any) {
       this.errorMessage =
         error?.message ?? "No se pudo enviar el lote del secretario al notario";
+    }
+  }
+
+  // El notario prepara los votos para enviarselos al presidente
+  private async sendNotaryBatchToPresident(): Promise<void> {
+    try {
+      if (!this.roundState) { throw new Error("No hay ronda P2P activa"); }
+
+      if (!this.isNotary || this.notaryBatchSentToPresident) { return; }
+
+      if (this.receivedNotaryItems.length === 0) {
+        throw new Error("El notario no tiene votos para enviar al presidente");
+      }
+
+      const president = this.roundState.roles.president;
+
+      const shuffledItems = this.shuffleArray(this.receivedNotaryItems);
+
+      const votePlainHashes = this.shuffleArray(
+        shuffledItems.map((item) => item.votePlainHash)
+      );
+
+      const encryptedForPresidentBatch = this.shuffleArray(
+        shuffledItems.map((item) => item.encryptedForPresident)
+      );
+
+      const commitmentPayload: NotaryHashCommitmentPayload = {
+        roundId: this.roundState.roundId,
+        roundNumber: this.roundState.roundNumber,
+        notaryPeerId: this.roundState.roles.notary.peerId,
+        votePlainHashes
+      };
+
+      const notaryHashCommitment = await this.p2pCryptoService.signWithVoterSigningKey(
+        this.roundState.ownPeerId,
+        commitmentPayload
+      );
+
+      const payload: NotaryBatchToPresidentPayload = {
+        roundId: this.roundState.roundId,
+        roundNumber: this.roundState.roundNumber,
+        notaryPeerId: this.roundState.roles.notary.peerId,
+        presidentPeerId: president.peerId,
+        notaryHashCommitment,
+        encryptedForPresidentBatch
+      };
+
+      const signedPayload = await this.p2pCryptoService.signWithVoterSigningKey(
+        this.roundState.ownPeerId,
+        payload
+      );
+
+      const message: NotaryBatchToPresidentMessage = {
+        type: "NOTARY_BATCH_TO_PRESIDENT",
+        payload: signedPayload
+      };
+
+      this.p2pNetworkService.sendToPeer(president.peerId, message);
+
+      this.successMessage = this.isPresident
+        ? "Lote del notario procesado localmente como presidente"
+        : "Notario: compromiso de hashes y lote enviados al presidente";
+
+      this.notaryBatchSentToPresident = true;
+    } catch (error: any) {
+      this.errorMessage =
+        error?.message ?? "No se pudo enviar el lote del notario al presidente";
     }
   }
 
@@ -490,6 +564,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (!this.roundState || !this.isNotary) { return; }
 
     const payload = signedPayload.payload;
+    this.receivedSecretaryBatchAsNotary = signedPayload;
 
     this.assertCurrentRound(payload.roundId, payload.roundNumber);
 
@@ -514,10 +589,94 @@ export class DashboardComponent implements OnInit, OnDestroy {
       throw new Error("Firma inválida del secretario");
     }
 
-    this.receivedSecretaryBatchAsNotary = signedPayload;
+    const ownEncryptionKeyPair = await this.voterKeyService.ensureEncryptionVoteKeyPair();
+    const decryptedItems: NotaryInnerPayload[] = [];
 
-    this.successMessage =
-      `Notario: lote recibido del secretario con ${payload.encryptedForNotaryBatch.length} votos cifrados`;
+    for (const encryptedForNotary of payload.encryptedForNotaryBatch) {
+      const item = await this.decryptEnvelope<NotaryInnerPayload>(
+        encryptedForNotary,
+        ownEncryptionKeyPair.privateKey
+      );
+
+      this.assertCurrentRound(item.roundId, item.roundNumber);
+
+      if (!item.votePlainHash || !item.encryptedForPresident) {
+        throw new Error("Elemento del lote del notario malformado");
+      }
+
+      decryptedItems.push(item);
+    }
+
+    this.receivedNotaryItems = decryptedItems;
+
+    this.successMessage += `\n Notario: lote recibido del secretario con ${payload.encryptedForNotaryBatch.length} votos cifrados`;
+    this.successMessage += `\n Notario: ${decryptedItems.length} hashes de voto descifrados`;
+
+    await this.sendNotaryBatchToPresident();
+  }
+
+  // Funcion para cuando el presidente recibe el paquete de votos
+  private async handleNotaryBatchToPresident(
+    signedPayload: SignedP2PPayload<NotaryBatchToPresidentPayload>
+  ): Promise<void> {
+    if (!this.roundState || !this.isPresident) {
+      return;
+    }
+
+    const payload = signedPayload.payload;
+
+    this.assertCurrentRound(payload.roundId, payload.roundNumber);
+
+    if (payload.presidentPeerId !== this.roundState.roles.president.peerId) {
+      throw new Error("El lote no va dirigido al presidente de esta ronda");
+    }
+
+    if (payload.notaryPeerId !== this.roundState.roles.notary.peerId) {
+      throw new Error("El lote no procede del notario de esta ronda");
+    }
+
+    if (signedPayload.signerPeerId !== this.roundState.roles.notary.peerId) {
+      throw new Error("El firmante no es el notario de la ronda");
+    }
+
+    const signatureValid = await this.p2pCryptoService.verifySignedP2PPayload(
+      signedPayload,
+      this.roundState.roles.notary.voterSigningPublicKey
+    );
+
+    if (!signatureValid) {
+      throw new Error("Firma inválida del lote del notario");
+    }
+
+    const commitment = payload.notaryHashCommitment;
+
+    if (commitment.signerPeerId !== this.roundState.roles.notary.peerId) {
+      throw new Error("El compromiso de hashes no está firmado por el notario");
+    }
+
+    const commitmentValid = await this.p2pCryptoService.verifySignedP2PPayload(
+      commitment,
+      this.roundState.roles.notary.voterSigningPublicKey
+    );
+
+    if (!commitmentValid) {
+      throw new Error("Firma inválida del compromiso de hashes del notario");
+    }
+
+    this.assertCurrentRound(commitment.payload.roundId, commitment.payload.roundNumber);
+
+    if (commitment.payload.notaryPeerId !== this.roundState.roles.notary.peerId) {
+      throw new Error("El compromiso de hashes pertenece a otro notario");
+    }
+
+    if (commitment.payload.votePlainHashes.length !== payload.encryptedForPresidentBatch.length) {
+      throw new Error("El número de hashes no coincide con el número de paquetes para presidente");
+    }
+
+    this.receivedBatchAsPresident = signedPayload;
+
+    this.successMessage +=
+      `\n Presidente: lote recibido del notario con ${payload.encryptedForPresidentBatch.length} votos cifrados`;
   }
 
   private toYoutubeEmbedUrl(url: string): string | null {
@@ -702,6 +861,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
         case "SECRETARY_BATCH_TO_NOTARY":
           await this.handleSecretaryBatchToNotary(
             message.payload as SignedP2PPayload<SecretaryBatchToNotaryPayload>
+          );
+          break;
+        case "NOTARY_BATCH_TO_PRESIDENT":
+          await this.handleNotaryBatchToPresident(
+            message.payload as SignedP2PPayload<NotaryBatchToPresidentPayload>
           );
           break;
       }
