@@ -1,6 +1,6 @@
 import { spawnSync } from "child_process";
 
-const countries = ["es", "fr", "de"];
+const countries = ["es", "fr", "de", "pt", "it"];
 
 for (const country of countries) {
     spawnSync(

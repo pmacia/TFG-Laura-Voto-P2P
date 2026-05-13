@@ -31,6 +31,15 @@ export class ResultsComponent implements OnInit {
   finalPoints: Record<string, number> = {};
 
   localReceipt: any | null = null;
+  countryCode: string | null = null;
+  countryName = "ANCC local";
+  private readonly countryNames: Record<string, string> = {
+    ES: "España",
+    FR: "Francia",
+    DE: "Alemania",
+    PT: "Portugal",
+    IT: "Italia"
+  };
 
   constructor(
     private publicBlockchainService: PublicBlockchainService,
@@ -51,7 +60,13 @@ export class ResultsComponent implements OnInit {
 
       this.localReceipt = this.loadLocalVoteReceipt();
 
+      const country = this.route.snapshot.queryParamMap.get("country");
       const baseUrl = this.route.snapshot.queryParamMap.get("baseUrl");
+
+      this.countryCode = country?.toUpperCase() ?? null;
+      this.countryName = this.countryCode
+        ? this.countryNames[this.countryCode] ?? this.countryCode
+        : "ANCC local";
 
       this.blocks = baseUrl
         ? await this.publicBlockchainService.getBlocksFromBaseUrl(baseUrl)
@@ -91,6 +106,10 @@ export class ResultsComponent implements OnInit {
 
   goToGlobalResults(): void {
     this.router.navigate(["/global-results"]);
+  }
+
+  getCountryName(countryCode: string): string {
+    return this.countryNames[countryCode?.toUpperCase()] ?? countryCode;
   }
 
   private loadLocalVoteReceipt(): any | null {

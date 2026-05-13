@@ -2399,6 +2399,468 @@
     margin-top: 1rem;
 }
 
+/* ==========================================================================
+   Round finished card
+   ========================================================================== */
+
+.round-finished-card {
+    position: relative;
+    display: grid;
+    gap: clamp(1.15rem, 2.4vh, 1.5rem);
+
+    inline-size: min(100%, 58rem);
+    margin-inline: auto;
+
+    padding:
+        clamp(2.4rem, 4vh, 3.1rem) clamp(1.25rem, 3vw, 2rem) clamp(1.5rem, 3vw, 2rem);
+
+    border: 1px solid rgba(255, 250, 247, 0.16);
+    border-radius: var(--radius-card);
+
+    background:
+        radial-gradient(circle at 18% 0%, rgba(255, 250, 247, 0.105), transparent 9rem),
+        radial-gradient(circle at 100% 92%, rgba(143, 245, 220, 0.08), transparent 14rem),
+        linear-gradient(180deg, rgba(255, 250, 247, 0.105), rgba(255, 250, 247, 0.052)),
+        var(--surface-deep);
+
+    box-shadow: var(--shadow-card);
+    backdrop-filter: blur(1.2rem) saturate(1.04);
+    -webkit-backdrop-filter: blur(1.2rem) saturate(1.04);
+
+    overflow: hidden;
+}
+
+.round-finished-card::before {
+    content: "";
+    position: absolute;
+    inset-block-start: 0.85rem;
+    inset-inline-start: 50%;
+
+    inline-size: 5.4rem;
+    block-size: 0.58rem;
+
+    transform: translateX(-50%);
+
+    border: 2px solid rgba(255, 250, 247, 0.46);
+    border-radius: var(--radius-pill);
+
+    background:
+        linear-gradient(90deg,
+            transparent 0%,
+            rgba(143, 245, 220, 0.95) 22%,
+            rgba(255, 240, 106, 0.85) 50%,
+            rgba(94, 231, 255, 0.95) 78%,
+            transparent 100%);
+    background-size: 78% 2px;
+    background-position: center;
+    background-repeat: no-repeat;
+
+    box-shadow:
+        0 0 0 1px rgba(0, 0, 0, 0.2),
+        0 0.35rem 0.9rem rgba(0, 0, 0, 0.2),
+        0 0 0.85rem rgba(143, 245, 220, 0.28),
+        0 0 1.35rem rgba(94, 231, 255, 0.18);
+
+    filter: drop-shadow(0 0 0.45rem rgba(143, 245, 220, 0.26));
+    pointer-events: none;
+}
+
+.round-finished-card::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    padding: 1px;
+    border-radius: inherit;
+    pointer-events: none;
+
+    background:
+        linear-gradient(135deg,
+            rgba(143, 245, 220, 0.42),
+            transparent 24%,
+            transparent 64%,
+            rgba(94, 231, 255, 0.32));
+
+    mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+    -webkit-mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+
+    mask-composite: exclude;
+    -webkit-mask-composite: xor;
+
+    opacity: 0.85;
+}
+
+.round-finished-card>h2 {
+    margin: 0;
+    color: var(--text-title);
+    text-align: center;
+    font-size: clamp(1.75rem, 7vw, 3.4rem);
+    line-height: 0.98;
+    font-weight: 950;
+    letter-spacing: -0.055em;
+    text-wrap: balance;
+
+    text-shadow:
+        0 0.08rem 0 rgba(0, 0, 0, 0.18),
+        0 1.25rem 3rem rgba(0, 0, 0, 0.38);
+}
+
+.round-finished-card>h2::after {
+    content: "Bloque aceptado por consenso";
+    display: block;
+    margin-block-start: 0.6rem;
+
+    color: rgba(255, 250, 247, 0.76);
+    font-size: clamp(0.78rem, 2.3vw, 0.96rem);
+    line-height: 1.35;
+    font-weight: 850;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+.round-finished-card>p {
+    margin: 0;
+    color: rgba(255, 250, 247, 0.82);
+    text-align: center;
+    font-size: 1rem;
+    line-height: 1.55;
+    font-weight: 600;
+}
+
+/* ==========================================================================
+   Summary grid
+   ========================================================================== */
+
+.summary-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+}
+
+.summary-grid>div {
+    min-inline-size: 0;
+
+    display: grid;
+    gap: 0.45rem;
+
+    padding: 0.95rem 1rem;
+
+    border: 2px solid rgba(255, 250, 247, 0.22);
+    border-radius: var(--radius-md);
+
+    background:
+        linear-gradient(180deg, rgba(255, 250, 247, 0.055), rgba(255, 250, 247, 0.025)),
+        rgba(3, 5, 24, 0.64);
+
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.05),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.22);
+}
+
+.summary-grid strong {
+    color: rgba(255, 250, 247, 0.72);
+    font-size: 0.78rem;
+    line-height: 1.3;
+    font-weight: 900;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.summary-grid span,
+.summary-grid code {
+    color: var(--text);
+    font-size: 1rem;
+    line-height: 1.45;
+    font-weight: 750;
+}
+
+.summary-grid code {
+    display: block;
+    max-inline-size: 100%;
+
+    padding: 0.7rem 0.75rem;
+
+    border: 1px solid rgba(94, 231, 255, 0.28);
+    border-radius: 0.85rem;
+
+    background: rgba(0, 0, 0, 0.24);
+    color: #dffbff;
+
+    font-family:
+        ui-monospace,
+        SFMono-Regular,
+        Menlo,
+        Monaco,
+        Consolas,
+        "Liberation Mono",
+        "Courier New",
+        monospace;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    font-weight: 700;
+
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+/* ==========================================================================
+   Tally section
+   ========================================================================== */
+
+.round-finished-card div:has(> h3) {
+    display: grid;
+    gap: 0.85rem;
+}
+
+.round-finished-card h3 {
+    margin: 0;
+    color: var(--text);
+    font-size: clamp(1.15rem, 4vw, 1.55rem);
+    line-height: 1.15;
+    font-weight: 950;
+    letter-spacing: -0.035em;
+}
+
+.round-finished-card ul {
+    display: grid;
+    gap: 0.55rem;
+
+    margin: 0;
+    padding: 0;
+
+    list-style: none;
+}
+
+.round-finished-card li {
+    position: relative;
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+
+    min-block-size: 3rem;
+    padding: 0.75rem 0.9rem 0.75rem 2.45rem;
+
+    border: 2px solid rgba(255, 250, 247, 0.2);
+    border-radius: var(--radius-sm);
+
+    background:
+        linear-gradient(180deg, rgba(255, 250, 247, 0.045), rgba(255, 250, 247, 0.018)),
+        var(--surface-card);
+
+    color: var(--text-soft);
+
+    font-size: 0.96rem;
+    line-height: 1.4;
+    font-weight: 700;
+}
+
+.round-finished-card li::before {
+    content: "";
+    position: absolute;
+    inset-inline-start: 0.9rem;
+    inset-block-start: 50%;
+
+    inline-size: 0.75rem;
+    block-size: 0.75rem;
+
+    border-radius: 50%;
+    background: var(--success);
+
+    box-shadow:
+        0 0 0 0.22rem rgba(143, 245, 220, 0.1),
+        0 0 1rem rgba(143, 245, 220, 0.24);
+
+    transform: translateY(-50%);
+}
+
+/* ==========================================================================
+   Actions
+   ========================================================================== */
+
+.actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+
+    margin-block-start: 0.25rem;
+}
+
+.actions button {
+    inline-size: 100%;
+    min-block-size: 3.45rem;
+    padding: 0.9rem 1.2rem;
+
+    border-radius: var(--radius-md);
+
+    font: inherit;
+    font-size: 1rem;
+    line-height: 1.2;
+    font-weight: 800;
+
+    cursor: pointer;
+
+    transition:
+        transform 180ms ease,
+        border-color 180ms ease,
+        background 180ms ease,
+        box-shadow 180ms ease,
+        filter 180ms ease;
+}
+
+.actions button:first-child {
+    border: 0;
+    color: #ffffff;
+    background:
+        linear-gradient(-45deg, #615dd0 0%, #a44bb4 68%, #f585bc 100%);
+
+    box-shadow:
+        0 0.9rem 1.7rem rgba(0, 0, 0, 0.24),
+        0 0.7rem 1.8rem rgba(255, 79, 163, 0.16);
+}
+
+.actions button:last-child {
+    border: 2px solid rgba(255, 250, 247, 0.32);
+    color: var(--text);
+    background:
+        linear-gradient(180deg, rgba(255, 250, 247, 0.07), rgba(255, 250, 247, 0.025)),
+        rgba(8, 10, 34, 0.62);
+}
+
+.actions button:hover {
+    transform: translateY(-0.055rem);
+}
+
+.actions button:first-child:hover {
+    filter: saturate(1.04) brightness(1.035);
+    box-shadow:
+        0 1.1rem 2rem rgba(0, 0, 0, 0.28),
+        0 0.85rem 2.1rem rgba(255, 79, 163, 0.22);
+}
+
+.actions button:last-child:hover {
+    border-color: rgba(94, 231, 255, 0.72);
+    background:
+        linear-gradient(180deg, rgba(255, 250, 247, 0.1), rgba(255, 250, 247, 0.04)),
+        rgba(8, 10, 34, 0.76);
+}
+
+.actions button:active {
+    transform: translateY(0.035rem) scale(0.997);
+}
+
+.actions button:focus,
+.actions button:focus-visible {
+    outline: 0.22rem solid var(--focus);
+    outline-offset: 0.22rem;
+
+    box-shadow:
+        0 0 0 0.4rem var(--focus-shadow),
+        0 1rem 2rem rgba(255, 79, 163, 0.2);
+}
+
+/* ==========================================================================
+   Motion
+   ========================================================================== */
+
+@media (prefers-reduced-motion: no-preference) {
+    .round-finished-card {
+        animation: card-in 700ms 120ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    }
+
+    .round-finished-card::before {
+        animation: pass-slot-glow 3.6s ease-in-out infinite;
+    }
+}
+
+/* ==========================================================================
+   Responsive
+   ========================================================================== */
+
+@media (min-width: 42rem) {
+    .round-finished-card {
+        padding:
+            clamp(2.5rem, 4vh, 3.2rem) clamp(1.55rem, 4vw, 2.35rem) clamp(1.55rem, 3vw, 2rem);
+    }
+
+    .summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .summary-grid>div:last-child {
+        grid-column: 1 / -1;
+    }
+
+    .actions {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media (min-width: 58rem) {
+    .summary-grid {
+        grid-template-columns: 0.7fr 0.8fr 2fr;
+    }
+
+    .summary-grid>div:last-child {
+        grid-column: auto;
+    }
+}
+
+/* ==========================================================================
+   Forced colors / high contrast
+   ========================================================================== */
+
+@media (forced-colors: active) {
+
+    .round-finished-card::before,
+    .round-finished-card::after,
+    .round-finished-card li::before {
+        display: none;
+    }
+
+    .round-finished-card,
+    .summary-grid>div,
+    .round-finished-card li,
+    .summary-grid code,
+    .actions button {
+        background: Canvas;
+        border: 2px solid CanvasText;
+        box-shadow: none;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+
+    .round-finished-card,
+    .round-finished-card>h2,
+    .round-finished-card>h2::after,
+    .round-finished-card>p,
+    .round-finished-card h3,
+    .summary-grid strong,
+    .summary-grid span,
+    .summary-grid code,
+    .round-finished-card li,
+    .actions button {
+        color: CanvasText;
+        text-shadow: none;
+    }
+
+    .actions button {
+        background: ButtonFace;
+        color: ButtonText;
+    }
+
+    .actions button:focus,
+    .actions button:focus-visible {
+        outline: 3px solid Highlight;
+        outline-offset: 3px;
+        box-shadow: none;
+    }
+}
+
 @media (prefers-reduced-motion: no-preference) {
     .p2p-graph__node--self .p2p-graph__node-ring {
         animation: self-ring-pulse 2.2s ease-in-out infinite;

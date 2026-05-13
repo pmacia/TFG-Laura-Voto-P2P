@@ -2,7 +2,7 @@ import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
 
-import { generateEd22519KeyPair } from "../src/crypto/signatures/ed22519.js";
+import { generateEd25519KeyPair } from "../src/crypto/signatures/ed22519.js";
 import { getCountryKeysPath } from "../src/config/paths.js";
 
 dotenv.config();
@@ -29,7 +29,7 @@ if (!passphrase) {
     process.exit(1);
 }
 
-const { publicKey, privateKey } = generateEd22519KeyPair({ passphrase });
+const { publicKey, privateKey } = generateEd25519KeyPair({ passphrase });
 
 const countryDir = getCountryKeysPath(country);
 

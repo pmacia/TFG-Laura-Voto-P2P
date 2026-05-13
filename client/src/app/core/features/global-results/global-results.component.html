@@ -7,22 +7,23 @@
         </button>
     </header>
 
-    <div *ngIf="loading" class="status-card">
+    <div *ngIf="loading" class="status-card" role="status" aria-live="polite">
         Calculando clasificación global...
     </div>
 
-    <div *ngIf="errorMessage" class="status-card status-card--error">
+    <div *ngIf="errorMessage" class="status-card status-card--error" role="alert" aria-live="assertive">
         {{ errorMessage }}
     </div>
 
-    <div *ngIf="successMessage" class="status-card status-card--success">
+    <div *ngIf="successMessage" class="status-card status-card--success" role="status" aria-live="polite">
         {{ successMessage }}
     </div>
 
     <section class="panel" *ngIf="globalPointsList.length > 0">
         <h2>Resultado final global</h2>
+        <caption class="sr-only">Clasificación global final por país y puntos</caption>
 
-        <table>
+        <table class="table table--ranking">
             <thead>
                 <tr>
                     <th>Posición</th>
@@ -34,7 +35,7 @@
             <tbody>
                 <tr *ngFor="let item of globalPointsList; let i = index">
                     <td>{{ i + 1 }}</td>
-                    <td>{{ item.country }}</td>
+                    <td>{{ getCountryName(item.country) }} ({{ item.country }})</td>
                     <td>{{ item.points }}</td>
                 </tr>
             </tbody>
@@ -82,7 +83,7 @@
 
                 <tbody>
                     <tr *ngFor="let item of getCountryAwardedPointsList(result)">
-                        <td>{{ item.country }}</td>
+                        <td>{{ getCountryName(item.country) }} ({{ item.country }})</td>
                         <td>{{ item.points }}</td>
                     </tr>
                 </tbody>

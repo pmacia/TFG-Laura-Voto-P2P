@@ -25,24 +25,59 @@ if (result.error) {
 async function createVoter() {
     await connectToDatabase(String(process.env.DATABASE_URI));
     const hashedSecretCode = await hashSecretCode("TFG_Pass_Segura6983985()·$=");
-    const { publicKey, privateKey } = generateEd25519KeyPair();
+    // const { publicKey, privateKey } = generateEd25519KeyPair();
 
-    const voter = new VoterModel({
-        voterId: `${country}-10`,
-        secretCode: hashedSecretCode,
-        identityPublicKey: publicKey,
-        encryptionPublicKey: "",
-        token: []
-    });
-    await voter.save();
-    console.log("Votante creado exitosamente");
-    await disconnectFromDatabase();
+    // const voter = new VoterModel({
+    //     voterId: `${country}-1`,
+    //     secretCode: hashedSecretCode,
+    //     identityPublicKey: publicKey,
+    //     encryptionPublicKey: "",
+    //     token: []
+    // });
+    // await voter.save();
+
+    // console.log("Votante creado exitosamente");
+    // await disconnectFromDatabase();
+
+    // const voterKeysPath = getVoterKeysPath(country);
+    // fs.mkdirSync(voterKeysPath, { recursive: true });
+    // fs.writeFileSync(path.join(voterKeysPath, `${voter.voterId}_private.pem`), privateKey);
 
     const voterKeysPath = getVoterKeysPath(country);
     fs.mkdirSync(voterKeysPath, { recursive: true });
-    fs.writeFileSync(path.join(voterKeysPath, `${voter.voterId}_private.pem`), privateKey);
 
-    process.exit(0);
+    for (let voterNumber = 1; voterNumber <= 30; voterNumber++) {
+        const voterId = `${country}-${voterNumber}`;
+
+        const existingVoter = await VoterModel.findOne({ voterId });
+
+        if (existingVoter) {
+            console.log(`El votante ${voterId} ya existe. Se omite.`);
+            continue;
+        }
+
+        const { publicKey, privateKey } = generateEd25519KeyPair();
+
+        const voter = new VoterModel({
+            voterId,
+            secretCode: hashedSecretCode,
+            identityPublicKey: publicKey,
+            encryptionPublicKey: "",
+            token: []
+        });
+
+        await voter.save();
+
+        fs.writeFileSync(
+            path.join(voterKeysPath, `${voterId}_private.pem`),
+            privateKey
+        );
+
+        console.log(`Votante creado: ${voterId}`);
+    }
+
+    console.log("Votantes creados exitosamente");
+    await disconnectFromDatabase();
 }
 
 createVoter().catch((error) => {

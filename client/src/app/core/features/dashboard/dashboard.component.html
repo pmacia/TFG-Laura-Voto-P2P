@@ -48,20 +48,13 @@
             </div>
 
             <div>
-                <strong>Quórum</strong>
-                <span>
-                    {{ finalizedBlock.approvals?.length || 0 }}/{{ roundState?.peers?.length || 0 }}
-                </span>
-            </div>
-
-            <div>
                 <strong>Hash del bloque</strong>
                 <code>{{ finalizedBlock.hash }}</code>
             </div>
         </div>
 
         <div *ngIf="finalizedBlock.payload.tally">
-            <h3>Conteo bruto de esta ronda</h3>
+            <h3>Conteo de votos de la ronda</h3>
 
             <ul>
                 <li *ngFor="let item of getBlockTallyList(finalizedBlock)">

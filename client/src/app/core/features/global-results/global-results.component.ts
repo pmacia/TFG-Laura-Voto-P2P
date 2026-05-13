@@ -49,6 +49,13 @@ export class GlobalResultsComponent implements OnInit {
   globalPoints: Record<string, number> = {};
 
   readonly mirrors = ANCC_MIRRORS;
+  private readonly countryNames: Record<string, string> = {
+    ES: "España",
+    FR: "Francia",
+    DE: "Alemania",
+    PT: "Portugal",
+    IT: "Italia"
+  };
 
   constructor(
     private publicBlockchainService: PublicBlockchainService,
@@ -82,6 +89,10 @@ export class GlobalResultsComponent implements OnInit {
       `Clasificación global calculada con ${verifiedCount}/${results.length} blockchain(s) verificadas.`;
 
     this.loading = false;
+  }
+
+  getCountryName(countryCode: string): string {
+    return this.countryNames[countryCode?.toUpperCase()] ?? countryCode;
   }
 
   private async loadCountryResult(
