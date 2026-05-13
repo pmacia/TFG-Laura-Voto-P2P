@@ -6,7 +6,9 @@ export type P2PMessageType =
     | "VOTE_TO_SECRETARY"
     | "SECRETARY_BATCH_TO_NOTARY"
     | "NOTARY_BATCH_TO_PRESIDENT"
-    | "PROPOSED_BLOCK";
+    | "PROPOSED_BLOCK"
+    | "BLOCK_APPROVAL"
+    | "FINALIZED_BLOCK";
 
 export interface P2PMessage<TPayload = unknown> {
     type: P2PMessageType;
@@ -143,6 +145,11 @@ export interface VotingRoundRolesSnapshot {
     presidentVotePublicKey: string;
 }
 
+export interface VotingRoundPeerSnapshot {
+    peerId: string;
+    voterSigningPublicKey: string;
+}
+
 // Payload bloque de resultado
 export interface VotingResultBlockPayload {
     index: number;
@@ -160,7 +167,9 @@ export interface VotingResultBlockPayload {
     votes?: VotePlain[];
     tokenRoundProofs?: TokenRoundProof[];
     tally?: Record<string, number>;
+    usedTokenIdsSnapshot?: string[];
     invalidTokens?: InvalidTokenEvidence[];
+    peersSnapshot?: VotingRoundPeerSnapshot[];
 
     createdAt: string;
 }
@@ -171,6 +180,7 @@ export interface VotingResultBlock {
     hash: string;
     presidentPeerId: string;
     presidentSignatureBase64: string;
+    approvals?: BlockApproval[];
 }
 
 // Bloque propuesto
@@ -180,9 +190,34 @@ export interface ProposedBlockPayload {
 
 export type ProposedBlockMessage = P2PMessage<ProposedBlockPayload>;
 
+// Aprobado del bloque
+export interface BlockApprovalPayload {
+    roundId: string;
+    roundNumber: number;
+    blockHash: string;
+    decision: "APPROVED";
+}
+
+export type BlockApproval = SignedP2PPayload<BlockApprovalPayload>;
+
+export interface BlockApprovalMessagePayload {
+    approval: BlockApproval;
+}
+
+export type BlockApprovalMessage = P2PMessage<BlockApprovalMessagePayload>;
+
+// Bloque validadod que finalmente forma parte de la cadena de bloques
+export interface FinalizedBlockPayload {
+    block: VotingResultBlock;
+}
+
+export type FinalizedBlockMessage = P2PMessage<FinalizedBlockPayload>;
+
 // Tipos de mensajes válidos del protocolo
 export type AnyVotingP2PMessage =
     | VoteToSecretaryMessage
     | SecretaryBatchToNotaryMessage
     | NotaryBatchToPresidentMessage
-    | ProposedBlockMessage;
+    | ProposedBlockMessage
+    | BlockApprovalMessage
+    | FinalizedBlockMessage;

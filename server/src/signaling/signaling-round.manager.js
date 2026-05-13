@@ -3,7 +3,11 @@ import { SIGNALING_TYPES, sendJson } from "./signaling-message-types.js";
 import { canonicalJson } from "../../../shared/utils/canonical-json.util.js";
 import { getVoterVotingPublicKeysById } from "../repositories/voter.repository.js";
 
-const ROUND_SIZE = Number(process.env.P2P_ROUND_SIZE || 2);
+const ROUND_SIZE = Number(process.env.P2P_ROUND_SIZE || 5);
+
+let activeRound = null;
+let activePrepare = null; // Ronda aún no confirmada a espera de confirmación de blockchain
+let roundNumber = 0;
 
 const waitingPeers = [];
 const livePeersById = new Map();
@@ -37,6 +41,163 @@ function hashBlock(block) {
         .digest("hex");
 }
 
+function createPrepare(peers) {
+    return {
+        prepareId: crypto.randomUUID(),
+        peers,
+        readyByPeerId: new Map(),
+        createdAt: new Date().toISOString()
+    };
+}
+
+// Solicitud a los clientes de que sincronicen la blockchain
+function tryPrepareNextRound() {
+    if (activeRound) {
+        return;
+    }
+
+    if (activePrepare) {
+        return;
+    }
+
+    if (waitingPeers.length < ROUND_SIZE) {
+        //broadcastWaitingState();
+        broadcastWaitingRoom();
+        return;
+    }
+
+    const selectedPeers = waitingPeers.splice(0, ROUND_SIZE);
+
+    activePrepare = {
+        prepareId: randomUUID(),
+        peers: selectedPeers,
+        readyByPeerId: new Map(),
+        createdAt: new Date().toISOString()
+    };
+
+    for (const peer of selectedPeers) {
+        sendJson(peer.ws, {
+            type: SIGNALING_TYPES.ROUND_PREPARE,
+            payload: {
+                prepareId: activePrepare.prepareId,
+                requiredCount: ROUND_SIZE,
+                peerIds: selectedPeers.map((item) => item.peerId)
+            }
+        });
+    }
+
+    //broadcastWaitingState();
+    broadcastWaitingRoom();
+}
+
+// Crear la ronda solo si todos coinciden
+function maybeCreatePreparedRound() {
+    if (!activePrepare) { return; }
+
+    const expectedCount = activePrepare.peers.length;
+
+    if (activePrepare.readyByPeerId.size < expectedCount) { return; }
+
+    const readyItems = Array.from(activePrepare.readyByPeerId.values());
+    const uniqueLastBlockHashes = new Set(
+        readyItems.map((item) => item.lastBlockHash)
+    );
+
+    if (uniqueLastBlockHashes.size !== 1) {
+        for (const peer of activePrepare.peers) {
+            sendJson(peer.ws, {
+                type: SIGNALING_TYPES.ERROR,
+                payload: {
+                    message: "Los nodos no coinciden en el último bloque verificado. Se reintentará la ronda."
+                }
+            });
+
+            waitingPeers.push(peer);
+        }
+
+        activePrepare = null;
+        //broadcastWaitingState();
+        broadcastWaitingRoom();
+        setTimeout(() => tryPrepareNextRound(), 500);
+        return;
+    }
+
+    const lastBlockHash = readyItems[0].lastBlockHash;
+    const selectedPeers = activePrepare.peers;
+
+    activePrepare = null;
+
+    createRoundFromPreparedPeers(selectedPeers, lastBlockHash);
+}
+
+async function createRoundFromPreparedPeers(peers, lastBlockHash) {
+    roundNumber += 1;
+
+    const roundId = randomUUID();
+
+    activeRound = {
+        roundId,
+        roundNumber,
+        peers,
+        lastBlockHash,
+        createdAt: new Date().toISOString()
+    };
+
+    const publicPeers = peers.map(toPublicPeer);
+
+    for (const peer of peers) {
+        peer.roundId = roundId;
+
+        sendJson(peer.ws, {
+            type: SIGNALING_TYPES.ROUND_CREATED,
+            payload: {
+                roundId,
+                roundNumber,
+                ownPeerId: peer.peerId,
+                peers: publicPeers,
+                lastBlockHash
+            }
+        });
+    }
+}
+
+export function handleRoundFinished(ws, payload) {
+    if (!activeRound) {
+        return;
+    }
+
+    const peer = findLivePeerBySocket(ws);
+
+    if (!peer) {
+        return;
+    }
+
+    if (payload.roundId !== activeRound.roundId) {
+        return;
+    }
+
+    const belongsToActiveRound = activeRound.peers.some(
+        (item) => item.peerId === peer.peerId
+    );
+
+    if (!belongsToActiveRound) {
+        return;
+    }
+
+    activeRound = null;
+
+    for (const finishedPeer of livePeersById.values()) {
+        if (finishedPeer.roundId === payload.roundId) {
+            finishedPeer.roundId = null;
+        }
+    }
+
+    //broadcastWaitingState();
+    broadcastWaitingRoom();
+
+    setTimeout(() => tryPrepareNextRound(), 500);
+}
+
 export async function registerPeer({ ws, voterId }) {
     if (livePeersById.has(voterId)) {
         sendJson(ws, {
@@ -66,8 +227,74 @@ export async function registerPeer({ ws, voterId }) {
     broadcastWaitingRoom();
 
     if (waitingPeers.length >= ROUND_SIZE) {
-        createRound();
+        tryPrepareNextRound();
     }
+}
+
+export function handleRoundReady(ws, payload) {
+    if (!activePrepare) {
+        sendJson(ws, {
+            type: SIGNALING_TYPES.ERROR,
+            payload: {
+                message: "No hay preparación de ronda activa"
+            }
+        });
+        return;
+    }
+
+    const peer = findLivePeerBySocket(ws);
+
+    if (!peer) {
+        sendJson(ws, {
+            type: SIGNALING_TYPES.ERROR,
+            payload: {
+                message: "Peer no encontrado"
+            }
+        });
+        return;
+    }
+
+    const belongsToPrepare = activePrepare.peers.some(
+        (item) => item.peerId === peer.peerId
+    );
+
+    if (!belongsToPrepare) {
+        sendJson(ws, {
+            type: SIGNALING_TYPES.ERROR,
+            payload: {
+                message: "El peer no pertenece a la preparación actual"
+            }
+        });
+        return;
+    }
+
+    if (payload.prepareId !== activePrepare.prepareId) {
+        sendJson(ws, {
+            type: SIGNALING_TYPES.ERROR,
+            payload: {
+                message: "prepareId incorrecto"
+            }
+        });
+        return;
+    }
+
+    if (!payload.lastBlockHash) {
+        sendJson(ws, {
+            type: SIGNALING_TYPES.ERROR,
+            payload: {
+                message: "Falta lastBlockHash"
+            }
+        });
+        return;
+    }
+
+    activePrepare.readyByPeerId.set(peer.peerId, {
+        peerId: peer.peerId,
+        lastBlockHash: payload.lastBlockHash,
+        readyAt: new Date().toISOString()
+    });
+
+    maybeCreatePreparedRound();
 }
 
 export function unregisterPeerBySocket(ws) {
@@ -194,6 +421,16 @@ export function relayToPeer({ fromPeerId, toPeerId, type, payload }) {
             toPeerId
         }
     });
+}
+
+export function findLivePeerBySocket(ws) {
+    for (const peer of livePeersById.values()) {
+        if (peer.ws === ws) {
+            return peer;
+        }
+    }
+
+    return null;
 }
 
 function broadcastToRound(roundId, message) {

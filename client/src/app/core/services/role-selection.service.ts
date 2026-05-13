@@ -11,28 +11,50 @@ export class RoleSelectionService {
         private blockchainVerificationService: BlockchainVerificationService
     ) { }
 
-    async selectRolesFromBlockchain(
+    // async selectRolesFromBlockchain(
+    //     peers: P2PPeer[],
+    //     blockchain: BlockchainBlock[]
+    // ): Promise<{
+    //     lastBlockHash: string;
+    //     roles: RoundRoles;
+    // }> {
+    //     if (!Array.isArray(peers) || peers.length < 3) {
+    //         throw new Error("Se necesitan al menos tres peers para seleccionar roles");
+    //     }
+
+    //     const lastBlockHash = await this.blockchainVerificationService.getLastBlockHash(blockchain);
+
+    //     const orderedPeers = await this.deterministicOrderPeers(peers, lastBlockHash);
+
+    //     return {
+    //         lastBlockHash,
+    //         roles: {
+    //             secretary: orderedPeers[0],
+    //             notary: orderedPeers[1],
+    //             president: orderedPeers[2]
+    //         }
+    //     };
+    // }
+
+    async selectRolesFromLastBlockHash(
         peers: P2PPeer[],
-        blockchain: BlockchainBlock[]
-    ): Promise<{
-        lastBlockHash: string;
-        roles: RoundRoles;
-    }> {
+        lastBlockHash: string
+    ): Promise<RoundRoles> {
         if (!Array.isArray(peers) || peers.length < 3) {
             throw new Error("Se necesitan al menos tres peers para seleccionar roles");
         }
 
-        const lastBlockHash = await this.blockchainVerificationService.getLastBlockHash(blockchain);
+        const seed = lastBlockHash || "GENESIS";
 
-        const orderedPeers = await this.deterministicOrderPeers(peers, lastBlockHash);
+        const orderedPeers = await this.deterministicOrderPeers(
+            peers,
+            seed
+        );
 
         return {
-            lastBlockHash,
-            roles: {
-                secretary: orderedPeers[0],
-                notary: orderedPeers[1],
-                president: orderedPeers[2]
-            }
+            secretary: orderedPeers[0],
+            notary: orderedPeers[1],
+            president: orderedPeers[2]
         };
     }
 

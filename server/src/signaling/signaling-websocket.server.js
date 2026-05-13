@@ -1,6 +1,6 @@
 import { WebSocketServer } from "ws";
 import { SIGNALING_TYPES, sendJson } from "./signaling-message-types.js";
-import { registerPeer, unregisterPeerBySocket, relayToPeer } from "./signaling-round.manager.js";
+import { registerPeer, unregisterPeerBySocket, relayToPeer, handleRoundReady, handleRoundFinished } from "./signaling-round.manager.js";
 import { validateSession } from "../services/session.service.js";
 
 export function attachSignalingWebSocketServer(httpServer) {
@@ -48,6 +48,12 @@ function handleMessage(ws, message) {
         case SIGNALING_TYPES.WEBRTC_ANSWER:
         case SIGNALING_TYPES.WEBRTC_ICE_CANDIDATE:
             handleRelayMessage(type, payload);
+            break;
+        case SIGNALING_TYPES.ROUND_READY:
+            handleRoundReady(ws, payload);
+            break;
+        case SIGNALING_TYPES.ROUND_FINISHED:
+            handleRoundFinished(ws, payload);
             break;
         default:
             sendJson(ws, {

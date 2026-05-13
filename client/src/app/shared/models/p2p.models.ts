@@ -1,7 +1,10 @@
 export type SignalingMessageType =
     | "JOIN_WAITING_ROOM"
     | "WAITING_ROOM_UPDATE"
+    | "ROUND_READY"
+    | "ROUND_PREPARE"
     | "ROUND_CREATED"
+    | "ROUND_FINISHED"
     | "WEBRTC_OFFER"
     | "WEBRTC_ANSWER"
     | "WEBRTC_ICE_CANDIDATE"

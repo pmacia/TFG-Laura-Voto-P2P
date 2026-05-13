@@ -42,10 +42,15 @@ import {
   VotingResultBlock,
   VotingResultBlockPayload,
   ProposedBlockMessage,
-  ProposedBlockPayload
+  ProposedBlockPayload,
+  BlockApproval,
+  BlockApprovalPayload,
+  BlockApprovalMessagePayload,
+  FinalizedBlockPayload
 } from '../../../shared/models/p2p-message.models';
 import { VoteToken } from '../../../shared/models/token.models';
 import { canonicalJson } from '../../utils/canonical-json.util';
+import { PublicBlockchainService } from '../../services/public-blockchain.service';
 
 @Component({
   selector: 'app-dashboard',
@@ -118,6 +123,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
   finalResults: Record<string, number> | null = null;
   voterId: string = "";
 
+  pendingProposedBlock: VotingResultBlock | null = null;
+  blockApprovalsByPeerId = new Map<string, BlockApproval>();
+  finalizedBlock: VotingResultBlock | null = null;
+  roundFinished = false;
+
+  private readonly localBlockchainStorageKey = "tfg_verified_blockchain";
+
   constructor(
     private authService: AuthService,
     private router: Router,
@@ -129,10 +141,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
     private p2pCryptoService: P2PCryptoService,
     private hybridCryptoService: HybridCryptoService,
     private voterKeyService: VoterKeyService,
-    private countryKeyService: CountryKeyService
+    private countryKeyService: CountryKeyService,
+    private publicBlockchainService: PublicBlockchainService
   ) { }
 
   async ngOnInit() {
+    this.loadLocalBlockchain();
     this.subscribeToP2PState();
     await this.loadVotingConfig();
   }
@@ -703,8 +717,44 @@ export class DashboardComponent implements OnInit, OnDestroy {
     await this.processPresidentBatchAndPublishBlock();
   }
 
-  // Todos reciben propuesta de bloque
+  // Todos reciben propuesta de bloque, firman su aprobación y lo envian al presidente
   private async handleProposedBlock(block: VotingResultBlock): Promise<void> {
+    if (!this.roundState) {
+      return;
+    }
+
+    const blockValid = await this.verifyReceivedBlock(block);
+
+    if (!blockValid) {
+      throw new Error("El bloque propuesto no es válido");
+    }
+
+    const approval = await this.createBlockApproval(block);
+
+    const message: P2PMessage<BlockApprovalMessagePayload> = {
+      type: "BLOCK_APPROVAL",
+      payload: {
+        approval
+      }
+    };
+
+    if (this.isPresident) {
+      await this.handleBlockApproval({
+        approval
+      });
+    } else {
+      this.p2pNetworkService.sendToPeer(
+        this.roundState.roles.president.peerId,
+        message
+      );
+    }
+
+    this.successMessage +=
+      "\n Bloque propuesto verificado. Aprobación enviada al presidente.";
+  }
+
+  // Aceptar bloque finalizado
+  private async handleFinalizedBlock(block: VotingResultBlock): Promise<void> {
     const alreadyExists = this.blockchain.some(
       (existingBlock) => existingBlock.hash === block.hash
     );
@@ -716,18 +766,61 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const blockValid = await this.verifyReceivedBlock(block);
 
     if (!blockValid) {
-      throw new Error("El bloque recibido no es válido");
+      throw new Error("El bloque finalizado no es válido");
+    }
+
+    const approvalsValid = await this.verifyBlockApprovals(block);
+
+    if (!approvalsValid) {
+      throw new Error("El bloque finalizado no tiene quórum válido");
     }
 
     this.blockchain = [...this.blockchain, block];
 
+    this.saveLocalBlockchain();
+
+    await this.tryMirrorBlock(block);
+
     if (block.payload.status === "VALID" && block.payload.tally) {
-      this.finalResults = block.payload.tally;
-      this.successMessage = "Resultados finales recibidos y verificados";
+      this.finalResults = this.calculateAccumulatedVoteCountsFromBlockchain();
     }
 
-    if (block.payload.status === "ABORTED") {
-      this.errorMessage = `Ronda anulada: ${block.payload.reason}`;
+    this.roundFinished = true;
+    this.finalizedBlock = block;
+
+    this.successMessage =
+      `Ronda finalizada. Bloque aceptado con ${block.approvals?.length ?? 0}/${this.roundState?.peers.length} aprobaciones.`;
+  }
+
+  // Presidente recibe las aprobaciones
+  private async handleBlockApproval(
+    payload: BlockApprovalMessagePayload
+  ): Promise<void> {
+    if (!this.roundState || !this.isPresident || !this.pendingProposedBlock) { return; }
+
+    const approval = payload.approval;
+
+    const valid = await this.verifyBlockApproval(
+      approval,
+      this.pendingProposedBlock.hash
+    );
+
+    if (!valid) { throw new Error("Aprobación de bloque inválida"); }
+    if (this.blockApprovalsByPeerId.has(approval.signerPeerId)) { return; }
+
+    this.blockApprovalsByPeerId.set(
+      approval.signerPeerId,
+      approval
+    );
+
+    const approvalsCount = this.blockApprovalsByPeerId.size;
+    const requiredApprovals = this.getRequiredApprovals();
+
+    this.successMessage =
+      `Presidente: aprobaciones recibidas ${approvalsCount}/${requiredApprovals}`;
+
+    if (approvalsCount >= requiredApprovals) {
+      await this.finalizePendingBlock();
     }
   }
 
@@ -790,7 +883,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
           tokenValidation.invalidTokens
         );
 
-        await this.publishBlock(abortedBlock);
+        await this.proposeBlock(abortedBlock);
         return;
       }
 
@@ -802,11 +895,77 @@ export class DashboardComponent implements OnInit, OnDestroy {
         tally
       });
 
-      await this.publishBlock(validBlock);
+      await this.proposeBlock(validBlock);
     } catch (error: any) {
       this.errorMessage =
         error?.message ?? "No se pudo procesar el lote del presidente";
     }
+  }
+
+  private async proposeBlock(block: VotingResultBlock): Promise<void> {
+    if (!this.roundState) { throw new Error("No hay ronda activa"); }
+    if (!this.isPresident) { return; }
+
+    this.pendingProposedBlock = block;
+    this.blockApprovalsByPeerId.clear();
+
+    const message: P2PMessage<ProposedBlockPayload> = {
+      type: "PROPOSED_BLOCK",
+      payload: {
+        block
+      }
+    };
+
+    this.p2pNetworkService.broadcast(message);
+
+    this.successMessage +=
+      "\n Presidente: bloque propuesto. Esperando aprobaciones de quórum...";
+
+    const ownApproval = await this.createBlockApproval(block);
+
+    await this.handleBlockApproval({
+      approval: ownApproval
+    });
+  }
+
+  // Finalizar el bloque
+  private async finalizePendingBlock(): Promise<void> {
+    if (!this.pendingProposedBlock) { throw new Error("No hay bloque propuesto pendiente"); }
+    if (this.presidentBlockPublished) { return; }
+
+    const approvals = Array.from(this.blockApprovalsByPeerId.values());
+
+    const finalizedBlock: VotingResultBlock = {
+      ...this.pendingProposedBlock,
+      approvals
+    };
+
+    const approvalsValid = await this.verifyBlockApprovals(finalizedBlock);
+
+    if (!approvalsValid) { throw new Error("No se alcanzó un quórum válido"); }
+
+    this.presidentBlockPublished = true;
+    this.finalizedBlock = finalizedBlock;
+
+    const message: P2PMessage<FinalizedBlockPayload> = {
+      type: "FINALIZED_BLOCK",
+      payload: {
+        block: finalizedBlock
+      }
+    };
+
+    this.p2pNetworkService.broadcast(message);
+
+    await this.handleFinalizedBlock(finalizedBlock);
+
+    this.successMessage =
+      `Bloque finalizado con quórum ${approvals.length}/${this.roundState?.peers.length}`;
+
+    this.p2pNetworkService.sendRoundFinished({
+      roundId: finalizedBlock.payload.roundId,
+      roundNumber: finalizedBlock.payload.roundNumber,
+      finalizedBlockHash: finalizedBlock.hash
+    });
   }
 
   private async publishBlock(block: VotingResultBlock): Promise<void> {
@@ -847,7 +1006,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return match ? match[1] : null;
   }
 
-  private joinP2PAfterVotePrepared(): void {
+  private async joinP2PAfterVotePrepared(): Promise<void> {
     const sessionToken = this.sessionService.getSessionToken();
 
     console.log(sessionToken);
@@ -889,10 +1048,32 @@ export class DashboardComponent implements OnInit, OnDestroy {
       this.disconnectedPeers = peers;
     });
 
+    this.p2pNetworkService.roundPrepare$.subscribe(async (prepare) => {
+      if (!prepare) {
+        return;
+      }
+
+      await this.handleRoundPrepare(prepare);
+    });
+
     this.p2pNetworkService.roundState$.subscribe(async (state) => {
       this.roundState = state;
 
       if (state) {
+        const localLastBlockHash = this.getPreviousBlockHash();
+
+        console.log("CHECK ROUND BLOCKCHAIN", {
+          stateLastBlockHash: state.lastBlockHash,
+          localLastBlockHash,
+          blockchainLength: this.blockchain.length,
+          blockchain: this.blockchain
+        });
+
+        if (state.lastBlockHash && state.lastBlockHash !== localLastBlockHash) {
+          this.errorMessage = "La blockchain local no coincide con la ronda preparada";
+          throw new Error("La blockchain local no coincide con la ronda preparada");
+        }
+
         this.joiningP2P = false;
         this.voteStep = 'p2p';
         this.successMessage = 'Ronda P2P creada correctamente';
@@ -1024,10 +1205,43 @@ export class DashboardComponent implements OnInit, OnDestroy {
             (message.payload as ProposedBlockPayload).block
           );
           break;
+        case "BLOCK_APPROVAL":
+          await this.handleBlockApproval(
+            message.payload as BlockApprovalMessagePayload
+          );
+          break;
+
+        case "FINALIZED_BLOCK":
+          await this.handleFinalizedBlock(
+            (message.payload as FinalizedBlockPayload).block
+          );
+          break;
       }
     } catch (error: any) {
       this.errorMessage =
         error?.message ?? "Error procesando mensaje P2P";
+    }
+  }
+
+  private async handleRoundPrepare(prepare: any): Promise<void> {
+    try {
+      this.successMessage = "Preparando ronda: sincronizando blockchain desde el mirror...";
+      this.errorMessage = "";
+
+      await this.syncBlockchainFromMirror();
+
+      const lastBlockHash = this.getPreviousBlockHash();
+
+      this.p2pNetworkService.sendRoundReady({
+        prepareId: prepare.prepareId,
+        lastBlockHash
+      });
+
+      this.successMessage =
+        `Blockchain sincronizada. Último bloque verificado: ${lastBlockHash.slice(0, 16)}...`;
+    } catch (error: any) {
+      this.errorMessage =
+        error?.message ?? "No se pudo preparar la ronda";
     }
   }
 
@@ -1066,9 +1280,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return remainingHashes.length === 0;
   }
 
+  // Comprobar ronda actual
   private async validateTokenRoundProofs(tokenRoundProofs: TokenRoundProof[]): Promise<{ ok: boolean; invalidTokens: any[]; }> {
     const invalidTokens: any[] = [];
     const seenTokenIds = new Set<string>();
+    const previouslyUsedTokenIds = this.getPreviousUsedTokenIdsSet();
 
     for (const tokenRoundProof of tokenRoundProofs) {
       const payload = tokenRoundProof.payload;
@@ -1080,6 +1296,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
           reason: "INVALID_TOKEN",
           details: "Falta payload o token"
         });
+        continue;
       }
 
       if (
@@ -1091,6 +1308,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
           reason: "INVALID_TOKEN_ROUND_SIGNATURE",
           details: "La prueba de token pertenece a otra ronda"
         });
+        continue;
       }
 
       if (!token.tokenId) {
@@ -1099,18 +1317,28 @@ export class DashboardComponent implements OnInit, OnDestroy {
           reason: "INVALID_TOKEN",
           details: "El token no contiene tokenId"
         });
+        continue;
       }
 
-      // TODO: debe tener en cuenta los tokens de toda la blockchain
       if (seenTokenIds.has(token.tokenId)) {
         invalidTokens.push({
           tokenRoundProof,
           reason: "DUPLICATED_TOKEN",
           details: "Token duplicado dentro de la ronda"
         });
+        continue;
       }
 
       seenTokenIds.add(token.tokenId);
+
+      if (previouslyUsedTokenIds.has(token.tokenId)) {
+        invalidTokens.push({
+          tokenRoundProof,
+          reason: "TOKEN_ALREADY_USED",
+          details: "El token ya aparece usado en un bloque anterior"
+        });
+        continue;
+      }
 
       const anccSignatureValid = await this.verifyANCCSignature(token);
 
@@ -1120,6 +1348,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
           reason: "INVALID_TOKEN",
           details: "Firma ANCC inválida"
         });
+        continue;
       }
 
       if (!token.tokenSigningPublicKey) {
@@ -1128,6 +1357,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
           reason: "INVALID_TOKEN",
           details: "El token no contiene clave pública de firma del votante"
         });
+        continue;
       }
 
       const tokenRoundSignatureValid = await this.p2pCryptoService.verifyWithPublicKey(
@@ -1142,6 +1372,103 @@ export class DashboardComponent implements OnInit, OnDestroy {
           reason: "INVALID_TOKEN_ROUND_SIGNATURE",
           details: "Firma token + roundId + roundNumber inválida"
         });
+        continue;
+      }
+    }
+
+    return {
+      ok: invalidTokens.length === 0,
+      invalidTokens
+    };
+  }
+
+  // Comprobar rondas anteriores
+  private async validateTokenRoundProofsForBlockVerification(
+    block: VotingResultBlock,
+    tokenRoundProofs: TokenRoundProof[]
+  ): Promise<{ ok: boolean; invalidTokens: any[]; }> {
+    const invalidTokens: any[] = [];
+    const seenTokenIdsInCurrentBlock = new Set<string>();
+
+    for (const tokenRoundProof of tokenRoundProofs) {
+      const payload = tokenRoundProof.payload;
+      const token = payload?.token;
+
+      if (!payload || !token) {
+        invalidTokens.push({
+          tokenRoundProof,
+          reason: "INVALID_TOKEN",
+          details: "Falta payload o token"
+        });
+        continue;
+      }
+
+      if (
+        payload.roundId !== block.payload.roundId ||
+        payload.roundNumber !== block.payload.roundNumber
+      ) {
+        invalidTokens.push({
+          tokenRoundProof,
+          reason: "INVALID_TOKEN_ROUND_SIGNATURE",
+          details: "La prueba de token pertenece a otra ronda"
+        });
+        continue;
+      }
+
+      if (!token.tokenId) {
+        invalidTokens.push({
+          tokenRoundProof,
+          reason: "INVALID_TOKEN",
+          details: "El token no contiene tokenId"
+        });
+        continue;
+      }
+
+      if (seenTokenIdsInCurrentBlock.has(token.tokenId)) {
+        invalidTokens.push({
+          tokenRoundProof,
+          reason: "DUPLICATED_TOKEN",
+          details: "Token duplicado dentro del bloque"
+        });
+        continue;
+      }
+
+      seenTokenIdsInCurrentBlock.add(token.tokenId);
+
+      const anccSignatureValid = await this.verifyANCCSignature(token);
+
+      if (!anccSignatureValid) {
+        invalidTokens.push({
+          tokenRoundProof,
+          reason: "INVALID_TOKEN",
+          details: "Firma ANCC inválida"
+        });
+        continue;
+      }
+
+      if (!token.tokenSigningPublicKey) {
+        invalidTokens.push({
+          tokenRoundProof,
+          reason: "INVALID_TOKEN",
+          details: "El token no contiene clave pública de firma del votante"
+        });
+        continue;
+      }
+
+      const tokenRoundSignatureValid =
+        await this.p2pCryptoService.verifyWithPublicKey(
+          payload,
+          tokenRoundProof.signatureBase64,
+          token.tokenSigningPublicKey
+        );
+
+      if (!tokenRoundSignatureValid) {
+        invalidTokens.push({
+          tokenRoundProof,
+          reason: "INVALID_TOKEN_ROUND_SIGNATURE",
+          details: "Firma token + roundId + roundNumber inválida"
+        });
+        continue;
       }
     }
 
@@ -1164,10 +1491,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   private async verifyReceivedBlock(block: VotingResultBlock): Promise<boolean> {
-    if (!this.roundState) {
-      return false;
-    }
-
     const calculatedHash = await this.p2pCryptoService.hashCanonical(
       block.payload
     );
@@ -1190,6 +1513,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
     );
 
     if (!presidentSignatureValid) {
+      return false;
+    }
+
+    if (!this.verifyUsedTokenIdsSnapshot(block)) {
       return false;
     }
 
@@ -1227,7 +1554,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
         return false;
       }
 
-      const tokenValidation = await this.validateTokenRoundProofs(tokenRoundProofs);
+      // TODO: revisar
+      // const tokenValidation = await this.validateTokenRoundProofs(tokenRoundProofs);
+      const tokenValidation = await this.validateTokenRoundProofsForBlockVerification(
+        block,
+        tokenRoundProofs
+      );
 
       if (!tokenValidation.ok) {
         return false;
@@ -1281,6 +1613,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
       throw new Error("No hay datos suficientes para crear bloque válido");
     }
 
+    const usedTokenIdsSnapshot = this.buildUsedTokenIdsSnapshotForValidBlock(params.tokenRoundProofs);
+
+    console.log("CREATING VALID BLOCK", {
+      blockchainLength: this.blockchain.length,
+      previousHash: this.getPreviousBlockHash(),
+      existingHashes: this.blockchain.map((b) => b.hash)
+    });
+
     const payload: VotingResultBlockPayload = {
       index: this.blockchain.length,
       previousHash: this.getPreviousBlockHash(),
@@ -1292,6 +1632,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
       votes: params.votes,
       tokenRoundProofs: params.tokenRoundProofs,
       tally: params.tally,
+      usedTokenIdsSnapshot,
+      peersSnapshot: this.getPeersSnapshot(),
       createdAt: new Date().toISOString()
     };
 
@@ -1322,11 +1664,28 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.receivedBatchAsPresident.payload.notaryHashCommitment,
 
       invalidTokens,
+      peersSnapshot: this.getPeersSnapshot(),
+
+      usedTokenIdsSnapshot: this.getPreviousUsedTokenIdsSnapshot(),
 
       createdAt: new Date().toISOString()
     };
 
     return this.signBlockPayload(payload);
+  }
+
+  private getPeersSnapshot(): Array<{
+    peerId: string;
+    voterSigningPublicKey: string;
+  }> {
+    if (!this.roundState) {
+      throw new Error("No hay ronda activa");
+    }
+
+    return this.roundState.peers.map((peer) => ({
+      peerId: peer.peerId,
+      voterSigningPublicKey: peer.voterSigningPublicKey
+    }));
   }
 
   private async signBlockPayload(
@@ -1377,6 +1736,344 @@ export class DashboardComponent implements OnInit, OnDestroy {
       presidentPeerId: this.roundState.roles.president.peerId,
       presidentVotePublicKey: this.roundState.roles.president.voterSigningPublicKey
     };
+  }
+
+  private getRequiredApprovals(): number {
+    if (!this.roundState) {
+      throw new Error("No hay ronda activa");
+    }
+
+    return Math.floor(this.roundState.peers.length / 2) + 1;
+  }
+
+  private async createBlockApproval(
+    block: VotingResultBlock
+  ): Promise<BlockApproval> {
+    if (!this.roundState) {
+      throw new Error("No hay ronda activa");
+    }
+
+    const payload: BlockApprovalPayload = {
+      roundId: this.roundState.roundId,
+      roundNumber: this.roundState.roundNumber,
+      blockHash: block.hash,
+      decision: "APPROVED"
+    };
+
+    return this.p2pCryptoService.signWithVoterSigningKey(
+      this.roundState.ownPeerId,
+      payload
+    );
+  }
+
+  private async verifyBlockApproval(
+    approval: BlockApproval,
+    expectedBlockHash: string
+  ): Promise<boolean> {
+    if (!this.roundState) { return false; }
+
+    const payload = approval.payload;
+
+    if (payload.roundId !== this.roundState.roundId) { return false; }
+    if (payload.roundNumber !== this.roundState.roundNumber) { return false; }
+    if (payload.blockHash !== expectedBlockHash) { return false; }
+    if (payload.decision !== "APPROVED") { return false; }
+
+    const peer = this.roundState.peers.find(
+      (item) => item.peerId === approval.signerPeerId
+    );
+
+    if (!peer) { return false; }
+
+    return this.p2pCryptoService.verifySignedP2PPayload(
+      approval,
+      peer.voterSigningPublicKey
+    );
+  }
+
+  private async verifyBlockApprovalForBlock(
+    block: VotingResultBlock,
+    approval: BlockApproval
+  ): Promise<boolean> {
+    const payload = approval.payload;
+
+    if (payload.roundId !== block.payload.roundId) return false;
+    if (payload.roundNumber !== block.payload.roundNumber) return false;
+    if (payload.blockHash !== block.hash) return false;
+    if (payload.decision !== "APPROVED") return false;
+
+    const peer = block.payload.peersSnapshot?.find(
+      (item) => item.peerId === approval.signerPeerId
+    );
+
+    if (!peer?.voterSigningPublicKey) {
+      return false;
+    }
+
+    return this.p2pCryptoService.verifySignedP2PPayload(
+      approval,
+      peer.voterSigningPublicKey
+    );
+  }
+
+  private async verifyBlockApprovals(
+    block: VotingResultBlock
+  ): Promise<boolean> {
+    const approvals = block.approvals ?? [];
+    const peersSnapshot = block.payload.peersSnapshot ?? [];
+
+    const requiredApprovals =
+      Math.floor(peersSnapshot.length / 2) + 1;
+
+    if (peersSnapshot.length < 3) {
+      return false;
+    }
+
+    if (approvals.length < requiredApprovals) {
+      return false;
+    }
+
+    const seenPeerIds = new Set<string>();
+
+    for (const approval of approvals) {
+      if (seenPeerIds.has(approval.signerPeerId)) {
+        return false;
+      }
+
+      seenPeerIds.add(approval.signerPeerId);
+
+      const valid = await this.verifyBlockApprovalForBlock(
+        block,
+        approval
+      );
+
+      if (!valid) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  private calculateAccumulatedVoteCountsFromBlockchain(): Record<string, number> {
+    const accumulated: Record<string, number> = {};
+
+    for (const block of this.blockchain) {
+      if (block.payload.status !== "VALID") {
+        continue;
+      }
+
+      const tally = block.payload.tally ?? {};
+
+      for (const [countryCode, count] of Object.entries(tally)) {
+        accumulated[countryCode] = (accumulated[countryCode] ?? 0) + count;
+      }
+    }
+
+    return accumulated;
+  }
+
+  private getPreviousUsedTokenIdsSnapshot(): string[] {
+    const lastBlock = this.blockchain[this.blockchain.length - 1];
+
+    return [...(lastBlock?.payload.usedTokenIdsSnapshot ?? [])].sort();
+  }
+
+  private getPreviousUsedTokenIdsSet(): Set<string> {
+    return new Set(this.getPreviousUsedTokenIdsSnapshot());
+  }
+
+  private getTokenIdsFromProofs(tokenRoundProofs: TokenRoundProof[]): string[] {
+    return tokenRoundProofs
+      .map((proof) => proof.payload?.token?.tokenId)
+      .filter((tokenId): tokenId is string => typeof tokenId === "string" && tokenId.length > 0);
+  }
+
+  private buildUsedTokenIdsSnapshotForValidBlock(
+    tokenRoundProofs: TokenRoundProof[]
+  ): string[] {
+    const previousTokenIds = this.getPreviousUsedTokenIdsSnapshot();
+    const newTokenIds = this.getTokenIdsFromProofs(tokenRoundProofs);
+
+    return Array.from(
+      new Set([...previousTokenIds, ...newTokenIds])
+    ).sort();
+  }
+
+  private verifyUsedTokenIdsSnapshot(block: VotingResultBlock): boolean {
+    const expectedPreviousSnapshot = this.getPreviousUsedTokenIdsSnapshot();
+
+    const expectedSnapshot =
+      block.payload.status === "VALID"
+        ? Array.from(
+          new Set([
+            ...expectedPreviousSnapshot,
+            ...this.getTokenIdsFromProofs(block.payload.tokenRoundProofs ?? [])
+          ])
+        ).sort()
+        : expectedPreviousSnapshot;
+
+    const receivedSnapshot = [...(block.payload.usedTokenIdsSnapshot ?? [])].sort();
+
+    return canonicalJson(expectedSnapshot) === canonicalJson(receivedSnapshot);
+  }
+
+  private loadLocalBlockchain(): void {
+    const raw = localStorage.getItem(this.localBlockchainStorageKey);
+
+    if (!raw) {
+      this.blockchain = [];
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(raw);
+
+      this.blockchain = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      this.blockchain = [];
+    }
+  }
+
+  private saveLocalBlockchain(): void {
+    localStorage.setItem(
+      this.localBlockchainStorageKey,
+      JSON.stringify(this.blockchain)
+    );
+  }
+
+  private async tryMirrorBlock(block: VotingResultBlock): Promise<void> {
+    try {
+      await this.publicBlockchainService.publishBlock(block);
+      console.log("Bloque publicado en mirror:", block.hash);
+    } catch (error) {
+      console.warn("No se pudo publicar el bloque en el mirror público", error);
+    }
+  }
+
+  private async syncBlockchainFromMirror(): Promise<void> {
+    const localBlockchain = [...this.blockchain];
+
+    let mirrorBlockchain: VotingResultBlock[] = [];
+
+    try {
+      mirrorBlockchain = await this.publicBlockchainService.getBlocks();
+    } catch (error) {
+      console.warn("No se pudo descargar blockchain del mirror", error);
+    }
+
+    console.log("MIRROR RAW", {
+      mirrorLength: mirrorBlockchain.length,
+      indexes: mirrorBlockchain.map((b) => b.payload.index),
+      hashes: mirrorBlockchain.map((b) => b.hash),
+      previousHashes: mirrorBlockchain.map((b) => b.payload.previousHash)
+    });
+
+    const validLocal = await this.verifyBlockchain(localBlockchain);
+    const validMirror = await this.verifyBlockchain(mirrorBlockchain);
+
+    console.log("MIRROR VALIDATION", {
+      localRaw: localBlockchain.length,
+      mirrorRaw: mirrorBlockchain.length,
+      validLocal: validLocal.length,
+      validMirror: validMirror.length,
+      validMirrorHashes: validMirror.map((b) => b.hash)
+    });
+
+    this.blockchain =
+      validMirror.length >= validLocal.length
+        ? validMirror
+        : validLocal;
+
+    this.saveLocalBlockchain();
+
+    console.log("SYNC SELECTED", {
+      selectedLength: this.blockchain.length,
+      lastHash: this.getPreviousBlockHash(),
+      selectedIndexes: this.blockchain.map((b) => b.payload.index)
+    });
+  }
+
+  private async verifyBlockchain(
+    blocks: VotingResultBlock[]
+  ): Promise<VotingResultBlock[]> {
+    const sortedBlocks = [...blocks].sort(
+      (a, b) => a.payload.index - b.payload.index
+    );
+
+    const previousBlockchain = this.blockchain;
+    const verifiedBlocks: VotingResultBlock[] = [];
+
+    try {
+      this.blockchain = [];
+
+      for (const block of sortedBlocks) {
+        console.log("VERIFY MIRROR BLOCK", {
+          receivedIndex: block.payload.index,
+          expectedIndex: verifiedBlocks.length,
+          previousHash: block.payload.previousHash,
+          expectedPreviousHash:
+            verifiedBlocks.length === 0
+              ? "GENESIS"
+              : verifiedBlocks[verifiedBlocks.length - 1].hash,
+          hash: block.hash
+        });
+
+        if (block.payload.index !== verifiedBlocks.length) {
+          console.warn("Bloque rechazado por índice incorrecto", {
+            received: block.payload.index,
+            expected: verifiedBlocks.length
+          });
+          break;
+        }
+
+        if (verifiedBlocks.length === 0) {
+          if (block.payload.previousHash !== "GENESIS") {
+            console.warn("Primer bloque no apunta a GENESIS", block);
+            break;
+          }
+        } else {
+          const previousBlock = verifiedBlocks[verifiedBlocks.length - 1];
+
+          if (block.payload.previousHash !== previousBlock.hash) {
+            console.warn("Bloque rechazado por previousHash incorrecto", {
+              received: block.payload.previousHash,
+              expected: previousBlock.hash
+            });
+            break;
+          }
+        }
+
+        const blockValid = await this.verifyReceivedBlock(block);
+
+        if (!blockValid) {
+          console.warn("Bloque rechazado por verifyReceivedBlock", block);
+          break;
+        }
+
+        if (!Array.isArray(block.approvals) || block.approvals.length === 0) {
+          console.warn("Bloque rechazado porque no tiene approvals", block);
+          break;
+        }
+
+        // const approvalsValid = await this.verifyBlockApprovals(block);
+
+        // if (!approvalsValid) { break; }
+        const approvalsValid = await this.verifyBlockApprovals(block);
+
+        if (!approvalsValid) {
+          console.warn("Bloque rechazado por approvals inválidas", block);
+          break;
+        }
+
+        verifiedBlocks.push(block);
+        this.blockchain = [...verifiedBlocks];
+      }
+
+      return verifiedBlocks;
+    } finally {
+      this.blockchain = previousBlockchain;
+    }
   }
 
   private buildP2PGraph(): void {

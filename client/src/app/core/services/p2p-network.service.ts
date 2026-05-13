@@ -15,6 +15,9 @@ export class P2PNetworkService {
     p2pMessages$ = new BehaviorSubject<any[]>([]);
     error$ = new BehaviorSubject<string | null>(null);
     disconnectedPeers$ = new BehaviorSubject<string[]>([]);
+    private roundPrepareSubject = new BehaviorSubject<any | null>(null);
+    roundPrepare$ = this.roundPrepareSubject.asObservable();
+    private preparedLastBlockHash: string | null = null;
 
     constructor(
         private signalingService: SignalingService,
@@ -25,6 +28,10 @@ export class P2PNetworkService {
             switch (message.type) {
                 case "WAITING_ROOM_UPDATE":
                     this.waitingState$.next(message.payload);
+                    break;
+
+                case "ROUND_PREPARE":
+                    this.roundPrepareSubject.next(message.payload);
                     break;
 
                 case "ROUND_CREATED":
@@ -90,15 +97,66 @@ export class P2PNetworkService {
         this.webRTCService.broadcast(data);
     }
 
+    sendRoundReady(payload: {
+        prepareId: string;
+        lastBlockHash: string;
+    }): void {
+        this.preparedLastBlockHash = payload.lastBlockHash;
+
+        this.signalingService.send({
+            type: "ROUND_READY",
+            payload
+        });
+    }
+
+    sendRoundFinished(payload: {
+        roundId: string;
+        roundNumber: number;
+        finalizedBlockHash: string;
+    }): void {
+        this.signalingService.send({
+            type: "ROUND_FINISHED",
+            payload
+        });
+    }
+
+    // private async handleRoundCreated(
+    //     round: RoundCreatedPayload
+    // ): Promise<void> {
+    //     try {
+
+    //         const { lastBlockHash, roles } =
+    //             await this.roleSelectionService.selectRolesFromBlockchain(
+    //                 round.peers,
+    //                 round.blockchain
+    //             );
+
+    //         const localRound: LocalRoundState = {
+    //             ...round,
+    //             lastBlockHash,
+    //             roles
+    //         };
+
+    //         this.roundState$.next(localRound);
+
+    //         await this.webRTCService.initializeRound(localRound);
+    //     } catch (error: any) {
+    //         this.error$.next(
+    //             error?.message ?? "No se pudo procesar la ronda P2P"
+    //         );
+    //     }
+    // }
+
     private async handleRoundCreated(
         round: RoundCreatedPayload
     ): Promise<void> {
         try {
-            const { lastBlockHash, roles } =
-                await this.roleSelectionService.selectRolesFromBlockchain(
-                    round.peers,
-                    round.blockchain
-                );
+            const lastBlockHash = this.preparedLastBlockHash ?? "GENESIS";
+
+            const roles = await this.roleSelectionService.selectRolesFromLastBlockHash(
+                round.peers,
+                lastBlockHash
+            );
 
             const localRound: LocalRoundState = {
                 ...round,
