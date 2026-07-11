@@ -2,6 +2,7 @@ import { chromium } from "playwright";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
+import os from "os";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -196,7 +197,7 @@ async function castVote(page, voter) {
 }
 
 async function openVoterSession(voter, index) {
-    const userDataDir = `C:/temp/tfg-voter-${voter.webUser}`;
+    const userDataDir = path.join(os.tmpdir(), `tfg-voter-${voter.webUser}`);
 
     console.log("----------------------------------------");
     console.log(`Preparando sesión para ${voter.voterId}`);
@@ -233,6 +234,10 @@ async function openVoterSession(voter, index) {
 
     page.on("pageerror", (error) => {
         console.error(`[${voter.voterId}] Error en página:`, error);
+    });
+
+    await page.goto(APP_URL, {
+        waitUntil: "domcontentloaded"
     });
 
     await page.goto(APP_URL, {

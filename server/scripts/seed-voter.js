@@ -1,54 +1,46 @@
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
-
+import { fileURLToPath } from "url";
 import { connectToDatabase, disconnectFromDatabase } from "../src/data/database.js";
 import { VoterModel } from "../src/models/voter.model.js";
 import { hashSecretCode } from "../src/crypto/hashing/argon2id.js";
 import { generateEd25519KeyPair } from "../src/crypto/signatures/ed22519.js";
 import { getVoterKeysPath } from "../src/config/paths.js";
 
-const country = process.argv[2];
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const SERVER_DIR = path.resolve(__dirname, "..");
+const supportedCountries = ["es", "fr", "de", "pt", "it"];
+const countryArg = process.argv[2];
+const countArg = Number(process.argv[3] || 30);
+const voterCount = Number.isInteger(countArg) && countArg > 0 ? countArg : 30;
 
-if (!country) {
-    console.error('Por favor, introduce el código del país');
+if (!countryArg) {
+    console.error("Por favor, introduce el código del país o --all");
     process.exit(1);
 }
 
-const result = dotenv.config({ path: `./env/.${country}.env` });
+function loadCountryEnv(country) {
+    const envPath = path.join(SERVER_DIR, "env", `.${country}.env`);
+    const result = dotenv.config({ path: envPath, override: true });
 
-if (result.error) {
-    console.error(`Error al cargar el archivo .${country}.env:`, result.error);
-    process.exit(1);
+    if (result.error) {
+        throw new Error(`Error al cargar el archivo ${envPath}: ${result.error.message}`);
+    }
 }
 
-async function createVoter() {
+async function createVotersForCountry(country, count) {
+    loadCountryEnv(country);
+
     await connectToDatabase(String(process.env.DATABASE_URI));
+
     const hashedSecretCode = await hashSecretCode("TFG_Pass_Segura6983985()·$=");
-    // const { publicKey, privateKey } = generateEd25519KeyPair();
-
-    // const voter = new VoterModel({
-    //     voterId: `${country}-1`,
-    //     secretCode: hashedSecretCode,
-    //     identityPublicKey: publicKey,
-    //     encryptionPublicKey: "",
-    //     token: []
-    // });
-    // await voter.save();
-
-    // console.log("Votante creado exitosamente");
-    // await disconnectFromDatabase();
-
-    // const voterKeysPath = getVoterKeysPath(country);
-    // fs.mkdirSync(voterKeysPath, { recursive: true });
-    // fs.writeFileSync(path.join(voterKeysPath, `${voter.voterId}_private.pem`), privateKey);
-
     const voterKeysPath = getVoterKeysPath(country);
     fs.mkdirSync(voterKeysPath, { recursive: true });
 
-    for (let voterNumber = 1; voterNumber <= 30; voterNumber++) {
+    for (let voterNumber = 1; voterNumber <= count; voterNumber++) {
         const voterId = `${country}-${voterNumber}`;
-
         const existingVoter = await VoterModel.findOne({ voterId });
 
         if (existingVoter) {
@@ -67,20 +59,39 @@ async function createVoter() {
         });
 
         await voter.save();
-
-        fs.writeFileSync(
-            path.join(voterKeysPath, `${voterId}_private.pem`),
-            privateKey
-        );
-
+        fs.writeFileSync(path.join(voterKeysPath, `${voterId}_private.pem`), privateKey);
         console.log(`Votante creado: ${voterId}`);
     }
 
-    console.log("Votantes creados exitosamente");
+    console.log(`Votantes creados exitosamente para ${country}`);
     await disconnectFromDatabase();
 }
 
-createVoter().catch((error) => {
-    console.error('Error al crear al votante:', error);
-    process.exit(1);
-});
+async function runAllCountries(count) {
+    for (const country of supportedCountries) {
+        console.log(`\n=== seed-voter para ${country} (${count} votantes) ===`);
+        await createVotersForCountry(country, count);
+    }
+}
+
+async function main() {
+    if (countryArg === "--all") {
+        await runAllCountries(voterCount);
+        process.exit(0);
+    }
+
+    if (!supportedCountries.includes(countryArg)) {
+        console.error(`País no soportado: ${countryArg}. Usa uno de: ${supportedCountries.join(", ")}`);
+        process.exit(1);
+    }
+
+    try {
+        await createVotersForCountry(countryArg, voterCount);
+        process.exit(0);
+    } catch (error) {
+        console.error("Error al crear al votante:", error);
+        process.exit(1);
+    }
+}
+
+main();

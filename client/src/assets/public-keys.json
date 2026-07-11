@@ -1,0 +1,22 @@
+{
+  "de": {
+    "ed25519SigningPublicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAq+f83nJRUPCvYOxchMgJh1uycmZ6TZD/k3p8/Jb3boU=\n-----END PUBLIC KEY-----\n",
+    "rsaEncryptionPublicKey": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxkhXKVEkf2nlv+/JdDlm\nwh3Dn/AwL2bRPEyoipAOm4kv8Vzt6YiHPkH4tF+TUJwcXESyhnYk9DkgX0bF9/sC\nIaSOIXaszGd8mOozHqi8uXUDB4UBMnyDDpYQFGnhVwh0RSQ/RDUNsbLhLYk1DFeK\nvoyHkMPOX951hXrJAbf2egXyDD46Dd16TxpKc8IkXlJBi791Ka6UAceRdj3e+5M9\nY1d8uE4tH+XW1QopDYmPSLmQBI6ASAd8ShQ22Dv/wCLU/nviJVVTVrbhd3aKjjXg\nGZAukzc9TOAogUDo8uhVAT3bitYleQUO3hmeA4oyYge8/qRUCN1e6bYt+Lkhqty8\n/wIDAQAB\n-----END PUBLIC KEY-----\n"
+  },
+  "es": {
+    "ed25519SigningPublicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA/11/3T/bE0TzFE8kx2smPgu/9tldALKDnv+vgnltkw4=\n-----END PUBLIC KEY-----\n",
+    "rsaEncryptionPublicKey": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4LYgmMGXp/PytYizmzF5\nVDq0/CQSTalnWj0en1a2+jy6TaI3h9iWPcbgkS6diuGP/D76r1YMn1ydRaOQSy4H\ntE0Ol5ysRu8vVWEiAkU/rWsBlQltOjiMd5K55yrOgC42nM0epT869Tq5klCijB0f\nqgzF8kcjHR9+G47zIltboZdS9TdmryohmyXjAXY4otifluzhmavCBXSmh9J7IHqJ\nI3dJ/6obFb+12ABx+03TLWGL/Y4cHWIygS4ze2Liw79/83Aug8txwSmxj8HPfdDr\nOJpMRv5l4pEa9blZnNuhmkm4IExrrMvcYYkRymX0MHaLsma0RG4EIm5bqTiKTjRf\nEwIDAQAB\n-----END PUBLIC KEY-----\n"
+  },
+  "fr": {
+    "ed25519SigningPublicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAf+Ln0RxRJsGwdyQImEVTO+LY6vdnDtq+vwcZe6RBTVI=\n-----END PUBLIC KEY-----\n",
+    "rsaEncryptionPublicKey": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAhxxUKemeRpMSBYu1Wbyd\nDDvz+mosce4L7vG8T906/8lCfNqpSzs4H3eNiwPCwOpRf9SG97fVb7wwS5+MV0NQ\nWnScOQCJD6AiWEBinwadrLA84PrPFRpeg2XahEFzEQieuiZcKf9RicvSyS8yIrCF\nfL2ay8MkZaKmaV5xqpp+SSoHbTo76CKvJgQGQfRHpn84fs4Cydv3/gUIer7hvIqI\n3OkK6B7t/h/llnC3wAINQfyLcZz+5+suuA8dgaLATycZ7RXTJ2MdorYe/3q1OI1+\nSTSfPFelLw/OMGt+RI6pBDvJ5Fb8xeu2Wmgg5iU0X1g8a06Srii8cLhVD5Zrrw3i\nCwIDAQAB\n-----END PUBLIC KEY-----\n"
+  },
+  "it": {
+    "ed25519SigningPublicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAJqq0OsT0zLYpt/gTd/kBGM7ZGYjvbbZv68PgPaJEsgE=\n-----END PUBLIC KEY-----\n",
+    "rsaEncryptionPublicKey": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAurb2rkRl+fOIj35uX7VO\nJWtVfAFXYy4dKx/IPeHxYD8qlyB8qHwsjUFKMokyGqxw3xMI5EygwhS7W+TLetBF\nC1DNl7SudaqdHKDHLsNXdvqaQXrh//eeiL0DnR+IhAEm5XQwXiPzPYcbNGRShQUH\nNhZLK3zkhL+Qjpeq5cw23gsLlOZy7AGFfS/jQsIMZXisld/b7lVOUCitap35YeDv\nkxBUhNPy4Jao0xnbPXk+PiWnizNYE1hjWHKyG0tHEJD42jSZvXpEq5Iaa+fS1wig\nzL5gltJndZ3DBBbfhbzmgSb3xqpA9kcFk2TQ2wLnIrLtDNIoVYPqa1mgCPBW3Iey\nxQIDAQAB\n-----END PUBLIC KEY-----\n"
+  },
+  "pt": {
+    "ed25519SigningPublicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEACilSTuRuwVkIJN1URRYB1w3VrsUs89BRgeraGeAHnkU=\n-----END PUBLIC KEY-----\n",
+    "rsaEncryptionPublicKey": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqmsdGJbPkkrPVI7w2obi\nlPboCpp2UXImyE67nCTHJNVqsnSNtCk57pQAbOBqYyUcTG+KEns5P6JXrzNMAxUH\nRIK9dkDjcKQQ8B+NxEHf5eL9XemCUT8WGa3nviKrDGQ9Fc7Z2GvJb5kxRY33/HnK\nmYsoMcTQAD0VkBVja/Xl9Hsku+gTp4c83Z2h5xL5rG4qUzLTgfx0DfFBOsqZFXp6\nK7bjCgok4hRgjzhl0JdLOL3QvdMKWufpPb0chkDExGpZQlAQb3RB8vOaJySLQ0gu\noJmGzonSKAHSoxAc2ddvX4b1RYJKUrEdGNnxGO7yNfnB4R29d0lTq72nL2FfixmV\nqQIDAQAB\n-----END PUBLIC KEY-----\n"
+  }
+}
